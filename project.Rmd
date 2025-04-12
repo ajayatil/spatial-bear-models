@@ -1,0 +1,213 @@
+---
+title: "Black Bear Spatial Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+#load packages
+library(sp)
+library(sf)
+library(spatstat)
+library(rgbif)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+```
+
+### Load bears dataset
+
+```{r}
+# # get occurrences from GBIF
+# bc_occ <- occ_search(
+#   scientificName = "Ursus americanus",
+#   country = "CA",
+#   stateProvince = "British Columbia",
+#   limit = 5000
+# )
+# 
+# # omit records with missing coordinates
+# occ_data <- bc_occ$data[!is.na(bc_occ$data$decimalLongitude) & !is.na(bc_occ$data$decimalLatitude), ]
+# 
+# # save occurrences
+# save(occ_data, file = "bc_bear_occurrences.Rda")
+```
+
+```{r}
+# load and view data
+load("bc_bear_occurrences.Rda")
+str(occ_data)
+```
+
+### Load covariates
+
+```{r}
+load("BC_Covariates.Rda")
+summary(DATA)
+```
+
+### Visualize bear occurrences in BC
+
+```{r}
+# extract location columns
+bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
+bears_loc_filtered <- subset(bears_loc, year %in% c(2021, 2022, 2023, 2024))
+
+# create sf object
+bears_sf <- st_as_sf(
+  bears_loc_filtered,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326  # WGS84 (longitude/latitude)
+)
+
+# BC Albers projection
+bears_sf_proj <- st_transform(bears_sf, crs = 3005)
+
+# extract x, y coordinates
+coords <- st_coordinates(bears_sf_proj)
+
+# extract BC window
+window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
+window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
+window <- as.owin(window_proj) # convert to owin using sf object
+
+# create ppp object
+bears_ppp <- ppp(
+  x = coords[,1],
+  y = coords[,2],
+  window = window
+)
+
+plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2024")
+```
+
+### Compare seasonal distributions
+
+```{r}
+# Define the seasons and corresponding colors
+seasons <- list(
+  winter = c(12, 1, 2),
+  spring = c(3, 4, 5),
+  summer = c(6, 7, 8),
+  autumn = c(9, 10, 11)
+)
+
+# Create an empty list to store the ppp objects for each season
+ppp_list <- list()
+
+# Create an empty list to store the filtered data for each season
+bears_sf_list <- list()
+
+# Loop over seasons
+for (i in 1:length(seasons)) {
+  
+  # Filter for each season
+  season_name <- names(seasons)[i]
+  season_months <- seasons[[i]]
+  
+  # Filter bears_loc_filtered by the season's months
+  bears_loc_season <- bears_loc_filtered[bears_loc_filtered$month %in% season_months, ]
+  
+  # Print the number of observations for this season
+  cat(season_name, ": ", nrow(bears_loc_season), " observations\n", sep="")
+  
+  # Create sf object for the filtered season
+  bears_sf_season <- st_as_sf(
+    bears_loc_season,
+    coords = c("decimalLongitude", "decimalLatitude"),
+    crs = 4326  # WGS84 (longitude/latitude)
+  )
+  
+  # Transform to BC Albers projection
+  bears_sf_season_proj <- st_transform(bears_sf_season, crs = 3005)
+  
+  # Store sf object in the list
+  bears_sf_list[[season_name]] <- bears_sf_season_proj
+  
+  # Extract x, y coordinates
+  coords <- st_coordinates(bears_sf_season_proj)
+  
+  # Create ppp object for each season
+  suppressWarnings(
+    bears_ppp_season <- ppp(
+      x = coords[, 1],
+      y = coords[, 2],
+      window = window
+    )
+  )
+  
+  # Store ppp object in the list
+  ppp_list[[season_name]] <- bears_ppp_season
+}
+```
+
+```{r}
+# Plot the four maps in a 2x2 grid
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+
+# Loop over ppp objects and plot them
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  suppressWarnings(
+    plot(ppp_list[[season_name]], main = paste(season_name, "(2024)"), pch = 21)
+  )
+}
+```
+
+### Looking at covariates
+
+```{r}
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+plot(DATA$Elevation)
+plot(DATA$Forest)
+plot(DATA$HFI)
+plot(DATA$Dist_Water)
+```
+
+```{r}
+elev <- DATA$Elevation
+cover <- DATA$Forest
+dist_water <- DATA$Dist_Water
+hfi <- DATA$HFI
+
+# intensity as a function of forest elevation
+par(mfrow=c(2,2), mar=c(2,2,2,2))
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  rho <- rhohat(ppp_list[[season_name]], elev) 
+  plot(rho, xlim=c(0, max(elev)), main = paste(season_name))
+}
+```
+
+```{r}
+# intensity as a function of forest cover
+par(mfrow=c(2,2), mar=c(2,2,2,2))
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  rho <- rhohat(ppp_list[[season_name]], cover) 
+  plot(rho, xlim=c(0, max(cover)), main = paste(season_name))
+}
+```
+
+```{r}
+# intensity as a function of HFI (human footprint index)
+par(mfrow=c(2,2), mar=c(2,2,2,2))
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  rho <- rhohat(ppp_list[[season_name]], hfi) 
+  plot(rho, xlim=c(0, max(hfi)), main = paste(season_name))
+}
+```
+
+```{r}
+# intensity as a function of distance from water
+par(mfrow=c(2,2), mar=c(2,2,2,2))
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  rho <- rhohat(ppp_list[[season_name]], dist_water) 
+  plot(rho, xlim=c(0, max(dist_water)), main = paste(season_name))
+}
+```
