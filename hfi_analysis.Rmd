@@ -1,0 +1,374 @@
+---
+title: "d589_hfianalysis"
+author: "Vidal Mendoza Tinoco (76236256)"
+date: "2025-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load packages
+library(sp)
+library(sf)
+library(spatstat)
+library(rgbif)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(tidyverse)
+library(raster)
+library(mgcv)
+```
+
+```{r}
+# load and view data
+load("bc_bear_occurrences.Rda")
+load("BC_Covariates.Rda")
+summary(DATA)
+``` 
+
+### Visualize bear occurrences in BC
+
+```{r}
+# extract location columns
+bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
+bears_loc_filtered <- subset(bears_loc, year %in% c(2021, 2022, 2023, 2024))
+
+# create sf object
+bears_sf <- st_as_sf(
+  bears_loc_filtered,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326  # WGS84 (longitude/latitude)
+)
+
+# BC Albers projection
+bears_sf_proj <- st_transform(bears_sf, crs = 3005)
+
+# extract x, y coordinates
+coords <- st_coordinates(bears_sf_proj)
+
+# extract BC window
+window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
+window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
+window <- as.owin(window_proj) # convert to owin using sf object
+
+# create ppp object
+bears_ppp <- ppp(
+  x = coords[,1],
+  y = coords[,2],
+  window = window
+)
+
+plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2024")
+```
+
+### Compare seasonal distributions
+
+```{r}
+# Define the seasons and corresponding colors
+seasons <- list(
+  winter = c(12, 1, 2),
+  spring = c(3, 4, 5),
+  summer = c(6, 7, 8),
+  autumn = c(9, 10, 11)
+)
+
+# Create an empty list to store the ppp objects for each season
+ppp_list <- list()
+
+# Create an empty list to store the filtered data for each season
+bears_sf_list <- list()
+
+# Loop over seasons
+for (i in 1:length(seasons)) {
+  
+  # Filter for each season
+  season_name <- names(seasons)[i]
+  season_months <- seasons[[i]]
+  
+  # Filter bears_loc_filtered by the season's months
+  bears_loc_season <- bears_loc_filtered[bears_loc_filtered$month %in% season_months, ]
+  
+  # Print the number of observations for this season
+  cat(season_name, ": ", nrow(bears_loc_season), " observations\n", sep="")
+  
+  # Create sf object for the filtered season
+  bears_sf_season <- st_as_sf(
+    bears_loc_season,
+    coords = c("decimalLongitude", "decimalLatitude"),
+    crs = 4326  # WGS84 (longitude/latitude)
+  )
+  
+  # Transform to BC Albers projection
+  bears_sf_season_proj <- st_transform(bears_sf_season, crs = 3005)
+  
+  # Store sf object in the list
+  bears_sf_list[[season_name]] <- bears_sf_season_proj
+  
+  # Extract x, y coordinates
+  coords <- st_coordinates(bears_sf_season_proj)
+  
+  # Create ppp object for each season
+  suppressWarnings(
+    bears_ppp_season <- ppp(
+      x = coords[, 1],
+      y = coords[, 2],
+      window = window
+    )
+  )
+  
+  # Store ppp object in the list
+  ppp_list[[season_name]] <- bears_ppp_season
+}
+```
+
+```{r}
+# Plot the four maps in a 2x2 grid
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+
+# Loop over ppp objects and plot them
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  suppressWarnings(
+    plot(ppp_list[[season_name]], main = paste(season_name, "(2024)"), pch = 21)
+  )
+}
+```
+
+### Looking at covariates
+
+```{r}
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+plot(DATA$Elevation)
+plot(DATA$Forest)
+plot(DATA$HFI)
+plot(DATA$Dist_Water)
+```
+
+```{r}
+elev <- DATA$Elevation
+cover <- DATA$Forest
+dist_water <- DATA$Dist_Water
+hfi <- DATA$HFI
+
+```
+
+
+```{r}
+
+# intensity as a function of HFI (human footprint index)
+par(mfrow=c(2,2), mar=c(2,2,2,2))
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  rho <- rhohat(ppp_list[[season_name]], hfi) 
+  plot(rho, xlim=c(0, max(hfi)), main = paste(season_name))
+}
+```  
+
+
+### EDA  
+
+```{r}
+# HFI for bears locations
+
+# im object to RasterLayer
+im2raster <- function(im_obj) {
+  # iamge to matrix
+  m <- as.matrix(im_obj)
+  # create raster object
+  r <- raster(m)
+  # range and extension
+  ext <- c(im_obj$xrange[1] - im_obj$xstep/2,
+           im_obj$xrange[2] + im_obj$xstep/2,
+           im_obj$yrange[1] - im_obj$ystep/2,
+           im_obj$yrange[2] + im_obj$ystep/2)
+  extent(r) <- ext
+  return(r)
+}
+
+# hfi to RasterLayer
+hfi_raster <- im2raster(hfi)
+
+# HFI in bear locations
+bears_sf_proj$hfi_value <- extract(hfi_raster, bears_sf_proj)
+
+summary(bears_sf_proj$hfi_value)
+```  
+
+**Interpretation:** The results suggest that most bear occurrences are found in areas with very low human footprints (values close to 0), which aligns with the expectation that bears are sensitive to human impact and tend to inhabit remote or undisturbed areas. The distribution is skewed to the right, indicating the presence of a few points in areas with higher HFIs that slightly elevate the mean, but do not change the fact that, overall, bears are predominantly detected in habitats with low human interference.  
+
+```{r}
+hist(bears_sf_proj$hfi_value, 
+     main = "HFI distribution at bear locations", 
+     xlab = "HFI",
+     col = "lightblue", border = "grey")
+
+```  
+
+```{r}
+hfi_values <- getValues(hfi_raster)
+
+hist(hfi_values, 
+     main = "Global distribution of HFI in BC", 
+     xlab = "HFI",
+     col = "lightgreen", border = "grey")
+```  
+
+### Model  
+
+```{r}
+hfi_matrix <- as.matrix(hfi)
+media_hfi <- mean(as.vector(hfi_matrix), na.rm = TRUE)
+cat("Mean HFI (without NA):", media_hfi, "\n")
+
+# Impute NA values in HFI using the mean
+hfi_clean <- eval.im( ifelse(is.na(hfi), media_hfi, hfi) )
+
+summary(as.vector(as.matrix(hfi_clean)))
+
+# model
+mod_hfi_clean <- ppm(bears_ppp, ~ hfi, covariates = list(hfi = hfi_clean))
+mod_hfi_clean
+```  
+
+**Interpretation:** The HFI object was converted to a raster, a low mean was calculated, and missing values were imputed using that mean. Most of the values in the imputed raster are close to 0.09459, except for a few extremes.  
+
+A point process model was fitted in which intensity depends on HFI. The coefficients indicate a significant positive relationship: areas with higher HFI values (although most are very low) are associated with higher intensity (or log-intensity) of bear occurrences.  
+
+It is important to interpret the change in intensity in the context of the HFI scale. Small increases in HFI (from 0.09 to 0.19) could be biologically relevant, given the multiplicative effect derived from the coefficient on the logarithmic scale.  
+
+```{r}
+# Predict the intensity in the study region
+pred_intensity <- predict(mod_hfi_clean)
+
+# Plot
+plot(pred_intensity, main = "Predicted Intensity Map based on HFI")
+points(bears_ppp, pch = 20, col = "red")
+```  
+
+**Interpretation:** The predicted intensity map shows that, based on the human footprint (HFI), most of the study area has very low intensities), indicating few expected events per unit area. Although the model shows a positive relationship between HFI and intensity, most HFI values are low, making the differences subtle. The overlay of actual occurrence points helps verify that, despite the reduced scale, the model captures spatial variation in areas with slight increases in HFI.
+
+```{r}
+mod_res_clean <- residuals(mod_hfi_clean, type = "pearson")
+
+mod_res_clean$v[!is.finite(mod_res_clean$v)] <- NA
+
+# Residuals
+plot(mod_res_clean, main = "Model Residual Map (Pearson) - Imputed HFI", na.col = "transparent")
+```  
+
+**Interpretation:** The distribution of the residuals does not show large spatial patterns, which would indicate that, although there are specific variations, globally the inhomogeneous Poisson model with HFI imputes a reasonable fit, but there could be specific areas that require complementary analysis or the incorporation of more covariates to improve the fit.  
+
+
+### Stational analysis  
+
+```{r}
+# model for each season (individually)
+models_seasonal <- list()
+
+for (season in names(ppp_list)) {
+  models_seasonal[[season]] <- ppm(ppp_list[[season]], ~ hfi, covariates = list(hfi = hfi_clean))
+  cat("Model for", season, ":\n")
+  print(models_seasonal[[season]])
+}
+```  
+
+**Interpretation:** The positive HFI coefficients at all stations imply that an increase in the human footprint is associated with an increase in the intensity of the point process (the bear occurrence rate), which is consistent with the relationship modeled in the global analysis. However, differences in the intercepts and slopes suggest slight seasonal variations in the spatial pattern. For example, in winter, for the same HFI value, the intensity is predicted to be generally lower than in summer (due to a more negative intercept), but with a more sensitive response to changes in HFI (larger coefficient). The warning of non-convergence in winter suggests that the behavior of the data for that station should be reviewed or alternative estimation methods should be considered.  
+
+
+```{r}
+# Combine the data from each season into a single data frame
+bears_all <- do.call(rbind, lapply(names(bears_sf_list), function(season) {
+  sf_season <- bears_sf_list[[season]]
+  coords <- st_coordinates(sf_season)
+  hfi_vals <- extract(hfi_raster, sf_season)
+  data.frame(x = coords[, 1], y = coords[, 2],
+             hfi_value = hfi_vals, season = season)
+}))
+
+# Convert "season" to a factor
+bears_all$season <- as.factor(bears_all$season)
+
+# Create a ppp object for the entire dataset using the defined study window.
+bears_ppp_all <- ppp(
+  x = bears_all$x,
+  y = bears_all$y,
+  window = window,
+  marks = bears_all$season
+)
+
+# Check how many points remain in the ppp object
+cat("Number of points in bears_ppp_all:", npoints(bears_ppp_all), "\n")
+
+# Retrieve the marks from the ppp object (these correspond to the points kept after rejection)
+current_marks <- marks(bears_ppp_all)
+
+# Convert the marks into a data frame with the correct number of rows
+marks(bears_ppp_all) <- data.frame(season = current_marks)
+
+# Fit the combined model including the interaction between HFI and season.
+mod_combined <- ppm(bears_ppp_all, ~ hfi * marks, 
+                    covariates = list(hfi = hfi_clean))
+
+# Display the model summary
+mod_combined
+
+```  
+
+**Interpretation:** 
+
+The model combines information from the HFI and the season (using "autumn" as the reference) to estimate the logarithm of the process intensity. For autumn, the equation is
+
+$$
+\log(\lambda) = -22.35 + 6.11 \times \text{HFI},
+$$
+
+which indicates that the higher the HFI, the higher the predicted intensity. In spring and summer, adjustments are added: in spring, +0.218 is added to the intercept and the slope is reduced by 0.499 units, so that
+
+$$
+\log(\lambda) = (-22.35 + 0.218) + (6.11 - 0.499) \times \text{HFI},
+$$
+
+and in summer, +1.010 is added to the intercept and the slope is reduced by 0.493, resulting in an effective slope similar to that of spring. In winter, however, the intercept decreases to -3.03 and the slope increases to +1.321, such that
+
+$$
+\log(\lambda) = (-22.35-3.03) + (6.11+1.321) \times \text{HFI},
+$$
+
+with an effective slope of approximately 7.43, implying that the intensity responds more sensitively to changes in HFI. It is important to note that a convergence warning was issued during the fitting, so estimates, especially in winter, should be interpreted with caution. 
+
+```{r}
+# Each row represents one occurrence, so we assign count = 1 to each one
+bears_all$count <- 1
+
+# GAM model with a smooth function for hfi_value and a term for season
+gam_model <- gam(count ~ s(hfi_value) + season, data = bears_all, family = poisson())
+
+summary(gam_model)
+```  
+
+**Interpretation:** BAD BAD
+
+```{r}
+mod_ppp <- ppm(bears_ppp_all, ~ polynom(hfi, degree = 2) + marks)
+mod_ppp
+```
+
+**Interpretation:** The fitted model is a multitype point process with degree 2 polynomial covariates for the human footprint (HFI) and the incorporation of the season mark (which takes the values autumn, spring, summer, and winter). The model formula is:
+
+$$
+\log(\lambda) = \beta_0 + \beta_1 \,\text{HFI} + \beta_2 \,\text{HFI}^2 + \text{effects of marks}
+$$
+
+where b0 = -22.95, b1 = 11.50, and b2 = -6.76. This indicates that, in the reference category (autumn), the relationship between HFI and intensity has a curvilinear shape: an increase in HFI initially increases intensity (due to the positive coefficient of HFI), but at higher HFI values, the effect is moderated (or even reversed) by the negative coefficient of the quadratic term.
+
+Additionally, small seasonal effects are observed: compared to autumn, spring has a minimal effect (0.04), summer increases the intensity by 0.83 units on the logarithmic scale, and winter reduces the intensity by 2.46 units. The model, however, generates a warning indicating that in approximately 0.33% of the quadrature points, the HFI covariate values were NA or undefined. This usually occurs when the HFI raster does not provide data for certain points in the spatial domain, which could slightly affect the estimate in those areas, although the percentage is small. Overall, the model suggests a nonlinear relationship between HFI and the intensity of occurrences, with additional variations depending on the season.
+
+
+
+
+
+
+
+

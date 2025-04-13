@@ -16,6 +16,7 @@ library(rgbif)
 library(ggplot2)
 library(rnaturalearth)
 library(rnaturalearthdata)
+library(tidyverse)
 ```
 
 ### Load bears dataset
@@ -39,7 +40,8 @@ library(rnaturalearthdata)
 ```{r}
 # load and view data
 load("bc_bear_occurrences.Rda")
-str(occ_data)
+#str(occ_data)
+#sapply(occ_data, class)
 ```
 
 ### Load covariates
