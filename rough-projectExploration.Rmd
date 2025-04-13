@@ -1,0 +1,191 @@
+---
+title: "Spatial Statistics"
+output: html_document
+---
+
+```{r}
+# Loads libraries
+library(rgbif)
+library(dplyr)
+library(spatstat)
+library(raster)
+library(sf)
+library(ggplot2)
+library(rnaturalearth)
+library(terra)
+```
+
+```{r}
+# Loads covariate data
+load("BC_Covariates.Rda", verbose = TRUE)
+```
+
+```{r}
+# Collects bear data from GBIF
+bc_bear <- occ_search(
+  scientificName = "Ursus americanus",
+  country = "CA",               
+  stateProvince = "British Columbia",
+  limit = 5000               
+)
+```
+
+```{r}
+# Clean/filter the bear data for 2024
+bc_bear$data$eventDate <- as.Date(bc_bear$data$eventDate, format = "%Y-%m-%d")
+
+bc_bear_2024 <- bc_bear$data[format(bc_bear$data$eventDate, "%Y") == "2024", ]
+bear_clean_2024 <- bc_bear_2024[!is.na(bc_bear_2024$decimalLongitude) & !is.na(bc_bear_2024$decimalLatitude), ]
+
+bear_df_2024 <- bear_clean_2024[, c("decimalLongitude", "decimalLatitude", "lifeStage")]
+
+# Extracts CRS projection and creates spatial object
+crs_string <- proj4string(DATA$Window)
+crs_object <- CRS(crs_string)
+bear_sf_2024 <- st_as_sf(bear_df_2024, coords = c("decimalLongitude", "decimalLatitude"), crs = 4326)
+
+# Subset data to British Columbia using Natural Earth data
+bc_map <- ne_states(country = "Canada", returnclass = "sf") %>%
+  dplyr::filter(name == "British Columbia") %>%
+  st_transform(crs = crs_object)
+
+window_sf <- st_as_sf(DATA$Window) 
+window_proj <- st_transform(window_sf, crs = 3005)  
+window <- as.owin(window_proj) 
+
+# Both datasets have the same CRS and filter occurrences within BC
+bear_sf_2024 <- st_transform(bear_sf_2024, crs = st_crs(bc_map))
+only_bc_bears <- bear_sf_2024[sapply(st_within(bear_sf_2024, bc_map), length) > 0, ]
+
+# Removes duplicates based on coordinates
+no_duplicate_bears <- only_bc_bears[!duplicated(st_coordinates(only_bc_bears)), ]
+
+# Extracts coordinates for point pattern 
+bear_df_projected <- as.data.frame(st_coordinates(no_duplicate_bears))
+```
+
+```{r}
+# Converts covariate data to raster layers
+elev_raster <- raster(DATA$Elevation)
+forest_raster <- raster(DATA$Forest)
+hfi_raster <- raster(DATA$HFI)
+dist_water_raster <- raster(DATA$Dist_Water)
+
+# Extracts covariate values for each bear occurrence
+bear_coords <- st_coordinates(bear_sf_2024)
+elevation_values <- extract(elev_raster, bear_coords)
+forest_values <- extract(forest_raster, bear_coords)
+hfi_values <- extract(hfi_raster, bear_coords)
+dist_water_values <- extract(dist_water_raster, bear_coords)
+
+# Filters out occurrences with missing covariate values
+valid_occurrences <- !is.na(elevation_values) & !is.na(forest_values) & 
+                      !is.na(hfi_values) & !is.na(dist_water_values)
+
+bear_data_with_covariates <- data.frame(
+  bear_sf_2024[valid_occurrences, ], 
+  elevation = elevation_values[valid_occurrences],
+  forest = forest_values[valid_occurrences],
+  hfi = hfi_values[valid_occurrences],
+  dist_water = dist_water_values[valid_occurrences],
+  lifeStage = bear_sf_2024$lifeStage[valid_occurrences] 
+)
+
+
+# Converts the combined data with covariates to an sf object
+bear_sf_with_covariates <- st_as_sf(bear_data_with_covariates)
+```
+
+```{r}
+# Plots bear occurrences by life stage
+ggplot(data = bear_sf_with_covariates) +
+  geom_sf(aes(color = lifeStage), size = 1) +  
+  scale_color_manual(values = c("Juvenile" = "red", "Adult" = "blue")) +
+  theme_minimal() +
+  labs(title = "Bear Occurrences Colored by LifeStage", 
+       color = "Life Stage") +
+  theme(legend.position = "right")
+
+# Plots bear occurrences by elevation
+ggplot(data = bear_sf_with_covariates) +
+  geom_sf(aes(color = elevation), size = 1) +
+  scale_color_viridis_c() +  
+  theme_minimal() +
+  labs(title = "Bear Occurrences Colored by Elevation", 
+       color = "Elevation (m)") +
+  theme(legend.position = "right")
+```
+
+```{r}
+bear_df_projected <- as.data.frame(st_coordinates(bear_sf_filtered))
+n_marks <- length(bc_bear$data$fieldNumber)
+n_points <- nrow(bear_df_projected)
+
+# Check if lengths match
+if (n_points != n_marks) {
+  warning("no match")
+}
+# Creates ppp
+bear_ppp <- if (n_points != n_marks) {
+  ppp(x = bear_df_projected[, 1], 
+      y = bear_df_projected[, 2], 
+      window = as.owin(window_proj))
+} else {
+  ppp(x = bear_df_projected[, 1], 
+      y = bear_df_projected[, 2], 
+      window = as.owin(window_proj), 
+      marks = bc_bear$data$fieldNumber)
+}
+
+
+# Plots the bear occurrences
+plot(bear_ppp, 
+     main = "Bear Occurrences (2024)")
+```
+
+```{r}
+# Kernel density estimate of bear occurrences
+density_bears <- density(bear_ppp)
+plot(density_bears, 
+     main = "Kernel Density of Bear Occurrences")
+```
+
+```{r}
+# Sets bandwidth for the point pattern process
+R <- bw.ppl(bear_ppp)
+
+# Scans statistic to detect hotspots
+LR <- scanLRTS(bear_ppp, r = R)
+
+# Calculates p-values
+pvals <- eval.im(pchisq(LR, df = 1, lower.tail = FALSE))
+
+# Plot p-value
+plot(pvals, main = "P-values for Spatial Hotspots")
+plot(as.owin(bc_map), add = TRUE, border = "red")
+
+# Computes nearest neighbor distance summary
+nnd <- nndist(bear_ppp)
+summary(nnd)
+```
+
+```{r}
+K <- Kest(bear_ppp)
+plot(K)
+Kin <-Kinhom(bear_ppp)
+plot(Kin)
+```
+
+
+Potential Research Questions: 
+Do male and female bears, or juvenile and adult bears, have different spatial distributions?
+-Sex and life stage might influence a bear’s habitat preference or distribution.
+-- Males might cover larger areas or move to different locations for mating
+
+Do male and female bears, or adults and juveniles, select different habitats?
+
+
+
+
+
+
