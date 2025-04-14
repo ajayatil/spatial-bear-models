@@ -1,0 +1,331 @@
+---
+title: "Ursus Americanus - Forest Cover Analysis"
+author: "Jane Shen"
+date: "2025-04-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+# load packages
+library(sp)
+library(sf)
+library(spatstat)
+library(rgbif)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(tidyverse)
+library(raster)
+library(mgcv)
+```
+
+```{r}
+# load and view data
+load("bc_bear_occurrences.Rda")
+# str(occ_data)
+load("BC_Covariates.Rda")
+summary(DATA)
+```
+
+### Visualize bear occurrences in BC
+
+```{r}
+# extract location columns
+bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
+bears_loc_filtered <- subset(bears_loc, year %in% c(2020, 2021, 2022, 2023, 2024))
+
+# create sf object
+bears_sf <- st_as_sf(
+  bears_loc_filtered,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326  # WGS84 (longitude/latitude)
+)
+
+# BC Albers projection
+bears_sf_proj <- st_transform(bears_sf, crs = 3005)
+
+# extract x, y coordinates
+coords <- st_coordinates(bears_sf_proj)
+
+# extract BC window
+window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
+window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
+window <- as.owin(window_proj) # convert to owin using sf object
+
+# create ppp object
+bears_ppp <- ppp(
+  x = coords[,1],
+  y = coords[,2],
+  window = window
+)
+
+plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020-2024")
+```
+
+### Compare seasonal distributions
+
+```{r}
+# Define the seasons
+seasons <- list(
+  winter = c(12, 1, 2),
+  spring = c(3, 4, 5),
+  summer = c(6, 7, 8),
+  autumn = c(9, 10, 11)
+)
+
+# Create an empty list to store the ppp objects for each season
+ppp_list <- list()
+
+# Create an empty list to store the filtered data for each season
+bears_sf_list <- list()
+
+# Loop over seasons
+for (i in 1:length(seasons)) {
+  
+  # Filter for each season
+  season_name <- names(seasons)[i]
+  season_months <- seasons[[i]]
+  
+  # Filter bears_loc_filtered by the season's months
+  bears_loc_season <- bears_loc_filtered[bears_loc_filtered$month %in% season_months, ]
+  
+  # Print the number of observations for this season
+  cat(season_name, ": ", nrow(bears_loc_season), " observations\n", sep="")
+  
+  # Create sf object for the filtered season
+  bears_sf_season <- st_as_sf(
+    bears_loc_season,
+    coords = c("decimalLongitude", "decimalLatitude"),
+    crs = 4326  # WGS84 (longitude/latitude)
+  )
+  
+  # Transform to BC Albers projection
+  bears_sf_season_proj <- st_transform(bears_sf_season, crs = 3005)
+  
+  # Store sf object in the list
+  bears_sf_list[[season_name]] <- bears_sf_season_proj
+  
+  # Extract x, y coordinates
+  coords <- st_coordinates(bears_sf_season_proj)
+  
+  # Create ppp object for each season
+  suppressWarnings(
+    bears_ppp_season <- ppp(
+      x = coords[, 1],
+      y = coords[, 2],
+      window = window
+    )
+  )
+  
+  # Store ppp object in the list
+  ppp_list[[season_name]] <- bears_ppp_season
+}
+```
+
+```{r}
+# Plot the four maps in a 2x2 grid
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+
+# Loop over ppp objects and plot them
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  suppressWarnings(
+    plot(ppp_list[[season_name]], main = season_name, pch = 21)
+  )
+}
+```
+
+### Looking at covariates
+
+```{r}
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+plot(DATA$Elevation)
+plot(DATA$Forest)
+plot(DATA$HFI)
+plot(DATA$Dist_Water)
+```
+
+### Forest cover analysis
+
+```{r}
+forest <- DATA$Forest
+
+# intensity as a function of forest cover
+par(mfrow=c(2,2), mar=c(2,2,2,2))
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  rho <- rhohat(ppp_list[[season_name]], forest)
+  plot(rho, xlim=c(0, max(forest)), main = paste(season_name))
+}
+```
+
+```{r}
+# forest cover for bears locations
+
+im2raster <- function(im_obj) {
+  m <- as.matrix(im_obj) # image to matrix
+  r <- raster(m) # create raster object
+  # range and extension
+  ext <- c(im_obj$xrange[1] - im_obj$xstep/2,
+           im_obj$xrange[2] + im_obj$xstep/2,
+           im_obj$yrange[1] - im_obj$ystep/2,
+           im_obj$yrange[2] + im_obj$ystep/2)
+  extent(r) <- ext
+  return(r)
+}
+
+# extract forest cover values at occurrence locations
+forest_raster <- im2raster(forest)
+bears_sf_proj$forest_value <- extract(forest_raster, bears_sf_proj)
+```
+
+#### KDE to estimate the concentration of bear occurrences based on forest cover values.
+
+```{r}
+# KDE for Bear Locations
+kde_b <- density(bears_sf_proj$forest_value, na.rm = TRUE, bw = "SJ-dpi")
+summary(bears_sf_proj$forest_value)
+
+plot(kde_b,
+     main = "Kernel Density Estimate of Forest Cover at Bear Locations",
+     xlab = "Elevation (meters)",
+     ylab = "Density",
+     col = "#2C6B2F", 
+     lwd = 2)  
+```
+
+These results suggest that bears are found in a mix of forested and non-forested areas, but on average, they’re in areas with moderate to high forest cover.
+
+### Modelling 
+
+#### Fitting bear location as a quadratic function of forest cover
+
+```{r}
+# NA with mean forest cover
+mean_forest <- mean(as.vector(as.matrix(forest)), na.rm = TRUE)
+forest_clean <- eval.im(ifelse(is.na(forest), mean_forest, forest))
+
+# polynomial model
+forest_model <- ppm(bears_ppp ~ forest + I(forest^2), covariates = list(forest = forest_clean))
+print(forest_model)
+
+# predicts and plots intensity
+pred_intensity_forest <- predict(forest_model)
+plot(pred_intensity_forest, 
+     main = "Predicted Intensity Based on Forest Cover")
+points(bears_ppp, 
+       pch = 20, 
+       col = "red")
+```
+The positive coefficient on the linear term indicates that bear occurrence intensity initially increases with forest cover. However, the negative coefficient on the quadratic term means that this relationship has a peak, after which further increases in forest cover are associated with a decrease in expected intensity. This suggests that bears are most likely to be found in areas with moderate forest cover, and less likely to occur in areas with either very low or very high forest density. 
+
+This pattern may reflect ecological preferences, where bears favor mixed habitats over open or densely forested areas. It’s also possible that human detection rates are lower in areas of dense vegetation, where visibility is reduced.
+
+#### Computing and plotting residuals
+
+```{r}
+forest_residuals <- residuals(forest_model, type = "pearson")
+forest_residuals$v[!is.finite(forest_residuals$v)] <- NA # removing any non-finite residuals
+plot(forest_residuals, 
+     main = "Residuals - Forest Model", 
+     na.col = "transparent")
+```
+
+### Seasonal analysis  
+
+#### Fitting a model for each season
+
+```{r}
+models_seasonal <- list()
+
+# model for each season (individually)
+for (season in names(ppp_list)) {
+  models_seasonal[[season]] <- ppm(ppp_list[[season]], ~ forest + I(forest^2), covariates = list(forest = forest_clean))
+  # cat("Model for", season, ":\n")
+  # print(models_seasonal[[season]])
+  plot(predict(models_seasonal[[season]]), main = paste("Intensity ~ Forest Cover -", season))
+}
+```  
+
+**Winter: Winter: Intercept: -23.78; Forest Coefficient: 0.0582; Quadratic Coefficient: -0.000672.**
+
+Bear occurrences increase with forest cover up to a point, then decline. The smaller linear coefficient suggests a slower rise in intensity compared to other seasons. The model did not converge, so caution is needed in interpreting the results.
+
+**Spring: Intercept: -21.96; Forest Coefficient: 0.0657; Quadratic Coefficient: -0.000632.**
+
+The relationship is similar to winter but slightly stronger, meaning a more noticeable increase and peak in moderate forest areas.
+
+**Summer: Intercept: -21.05; Forest Coefficient: 0.0621; Quadratic Coefficient: -0.000602.**
+
+Summer shows a comparable trend with a slightly weaker curvature, suggesting bears may tolerate higher forest density before intensity starts to drop.
+
+**Autumn: Intercept: -21.70; Forest Coefficient: 0.0678; Quadratic Coefficient: -0.000732.**
+
+Autumn has the sharpest curve (greatest linear and quadratic coefficient magnitudes), indicating a more distinct peak and a stronger decline in high-density forest areas.
+
+Overall, all seasons display a consistent non-linear relationship where bear occurrence intensity increases with forest cover up to a moderate level, then declines. While the shape of the curve remains similar, the strength and location of the peak vary slightly by season, indicating subtle shifts in habitat preference throughout the year.
+
+#### Fitting bear location as a quadratic function of forest cover with season as a factor
+
+```{r}
+# Combine the data from each season into a single data frame
+bears_all <- do.call(rbind, lapply(names(bears_sf_list), function(season) {
+  sf_season <- bears_sf_list[[season]]
+  coords <- st_coordinates(sf_season)
+  forest_vals <- extract(forest_raster, sf_season)
+  data.frame(x = coords[, 1], y = coords[, 2],
+             forest_value = forest_vals, season = season)
+}))
+
+# Convert "season" to a factor
+bears_all$season <- as.factor(bears_all$season)
+
+# Create a ppp object for the entire dataset using the defined study window.
+bears_ppp_all <- ppp(
+  x = bears_all$x,
+  y = bears_all$y,
+  window = window,
+  marks = bears_all$season
+)
+
+# Check how many points remain in the ppp object
+cat("Number of points in bears_ppp_all:", npoints(bears_ppp_all), "\n")
+
+# Retrieve the marks from the ppp object (these correspond to the points kept after rejection)
+current_marks <- marks(bears_ppp_all)
+
+# Convert the marks into a data frame with the correct number of rows
+marks(bears_ppp_all) <- data.frame(season = current_marks)
+
+# Fit the combined model including the interaction between HFI and season.
+mod_combined <- ppm(bears_ppp_all ~ forest + I(forest^2) + marks, 
+                    covariates = list(forest = forest_clean))
+
+# Display the model summary
+mod_combined
+```  
+
+In general, as forest cover increases, the log intensity of bear occurrence initially increases. The negative quadratic term indicates that the intensity eventually decreases after a peak, suggesting a preference for moderate forest cover.
+
+The magnitude of the spring coefficient is small compared to autumn (baseline), suggesting that after adjusting for forest cover, spring does not differ significantly from the autumn in terms of intensity of bear occurrences.
+
+Summer has the highest relative intensity among seasons, meaning bear occurrences are much more likely in summer compared to autumn.
+
+Winter has a much lower intensity than autumn, indicating far fewer bear sightings or activity.
+
+#### Performing Quadrat test for each season
+
+```{r}
+# quadrat tests
+for (s in names(ppp_list)) {
+  qt <- quadrat.test(ppp_list[[s]], nx = 5, ny = 5)
+  print(qt)
+  plot(qt, main = paste("Quadrat test -", s))
+}
+```
+
+All p-values are small (< 2.2e-16) indicating significant deviation from CSR in each season.
