@@ -1,0 +1,580 @@
+---
+title: "Project - Single covariate and mulit-covariate modelling"
+author: "Amali Jayatileke"
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%OS')`"
+output:
+  html_document:
+    toc: true
+    theme: cerulean
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+#load packages
+#load packages
+library(sp)
+library(sf)
+library(spatstat)
+library(rgbif)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(tidyverse)
+library(raster)
+library(mgcv)
+```
+
+### Load bears dataset
+
+```{r}
+# # get occurrences from GBIF
+#bc_occ <- occ_search(
+#   scientificName = "Ursus americanus",
+#   country = "CA",
+#   stateProvince = "British Columbia",
+#   limit = 5000
+# )
+ 
+ # omit records with missing coordinates
+#occ_data <- bc_occ$data[!is.na(bc_occ$data$decimalLongitude) & !is.na(bc_occ$data$decimalLatitude), ]
+ 
+# save occurrences
+#save(occ_data, file = "bc_bear_occurrences2.Rda")
+```
+
+```{r}
+# load and view data
+load("bc_bear_occurrences.Rda")
+str(occ_data)
+```
+
+
+### Load covariates
+
+```{r}
+load("BC_Covariates.Rda")
+summary(DATA)
+```
+
+### Visualize bear occurrences in BC
+
+```{r}
+# extract location columns
+bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
+bears_loc_filtered <- subset(bears_loc, year %in% c(2020, 2021, 2022, 2023, 2024))
+#bears_loc_filtered <- subset(bears_loc, year %in% c(2024))
+# create sf object
+bears_sf <- st_as_sf(
+  bears_loc_filtered,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326  # WGS84 (longitude/latitude)
+)
+
+# BC Albers projection
+bears_sf_proj <- st_transform(bears_sf, crs = 3005)
+
+# extract x, y coordinates
+coords <- st_coordinates(bears_sf_proj)
+
+# extract BC window
+window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
+window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
+window <- as.owin(window_proj) # convert to owin using sf object
+
+
+# create ppp object
+#bears_ppp <- ppp(
+#   x = coords[,1],
+#   y = coords[,2],
+#  window = window
+#)
+
+#plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020 - 2024")
+
+# To avoid plotting points outside window (illegal points)
+# Intersect points with window
+bears_sf_proj_filtered <- bears_sf_proj[st_within(bears_sf_proj, window_proj, sparse = FALSE), ]
+
+# Re-extract coordinates
+coords_filtered <- st_coordinates(bears_sf_proj_filtered)
+
+# Create new ppp object
+bears_ppp <- ppp(
+ x = coords_filtered[, 1],
+  y = coords_filtered[, 2],
+  window = window
+)
+
+plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020 - 2024")
+
+```
+
+### Compare seasonal distributions
+
+```{r}
+# Define the seasons and corresponding colors
+seasons <- list(
+  winter = c(12, 1, 2),
+  spring = c(3, 4, 5),
+  summer = c(6, 7, 8),
+  autumn = c(9, 10, 11)
+)
+
+# Create an empty list to store the ppp objects for each season
+ppp_list <- list()
+
+# Create an empty list to store the filtered data for each season
+bears_sf_list <- list()
+
+# Loop over seasons
+for (i in 1:length(seasons)) {
+  
+  # Filter for each season
+  season_name <- names(seasons)[i]
+  season_months <- seasons[[i]]
+  
+  # Filter bears_loc_filtered by the season's months
+  bears_loc_season <- bears_loc_filtered[bears_loc_filtered$month %in% season_months, ]
+  
+  # Print the number of observations for this season
+  cat(season_name, ": ", nrow(bears_loc_season), " observations\n", sep="")
+  
+  # Create sf object for the filtered season
+  bears_sf_season <- st_as_sf(
+    bears_loc_season,
+    coords = c("decimalLongitude", "decimalLatitude"),
+    crs = 4326  # WGS84 (longitude/latitude)
+  )
+  
+  # Transform to BC Albers projection
+  bears_sf_season_proj <- st_transform(bears_sf_season, crs = 3005)
+  
+  # Store sf object in the list
+  bears_sf_list[[season_name]] <- bears_sf_season_proj
+  
+  # Extract x, y coordinates
+  coords <- st_coordinates(bears_sf_season_proj)
+  
+  # Create ppp object for each season
+  suppressWarnings(
+    bears_ppp_season <- ppp(
+      x = coords[, 1],
+      y = coords[, 2],
+      window = window
+    )
+  )
+  
+  # Store ppp object in the list
+  ppp_list[[season_name]] <- bears_ppp_season
+}
+```
+
+```{r}
+# Plot the four maps in a 2x2 grid
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+
+# Loop over ppp objects and plot them
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  suppressWarnings(
+    plot(ppp_list[[season_name]], main = paste(season_name, "(2024)"), pch = 21)
+  )
+}
+```
+
+### Looking at covariates
+
+```{r}
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+plot(DATA$Elevation)
+plot(DATA$Forest)
+plot(DATA$HFI)
+plot(DATA$Dist_Water)
+
+
+
+```
+
+```{r}
+elev <- DATA$Elevation
+cover <- DATA$Forest
+dist_water <- DATA$Dist_Water
+hfi <- DATA$HFI
+```
+
+
+### EDA  
+
+
+```{r}
+# Distance to water for bears locations
+
+# im object to RasterLayer
+im2raster <- function(im_obj) {
+  # iamge to matrix
+  m <- as.matrix(im_obj)
+  # create raster object
+  r <- raster(m)
+  # range and extension
+  ext <- c(im_obj$xrange[1] - im_obj$xstep/2,
+           im_obj$xrange[2] + im_obj$xstep/2,
+           im_obj$yrange[1] - im_obj$ystep/2,
+           im_obj$yrange[2] + im_obj$ystep/2)
+  extent(r) <- ext
+  return(r)
+}
+
+# dist_water to RasterLayer
+distw_raster <- im2raster(dist_water)
+
+# dist_water in bear locations
+bears_sf_proj$distw_value <- extract(distw_raster, bears_sf_proj) #For each bear point, extract the distance to water value from the raster.
+
+summary(bears_sf_proj$distw_value)
+```  
+
+
+
+
+
+
+
+
+
+
+**Interpretation:**
+
+```{r}
+hist(bears_sf_proj$distw_value, 
+     main = "Distance to Water at bear locations", 
+     xlab = "Distance to Water",
+     col = "lightblue", border = "grey")
+
+```  
+
+```{r}
+distw_values <- getValues(distw_raster)
+
+hist(distw_values, 
+     main = "Global distribution of Distance to Water in BC", 
+     xlab = "Distance to Water",
+     col = "lightgreen", border = "grey")
+```  
+
+### Model - Single covariate
+
+```{r}
+distw_matrix <- as.matrix(dist_water)
+media_distw <- mean(as.vector(distw_matrix), na.rm = TRUE)
+cat("Mean distw (without NA):", media_distw, "\n")
+
+# Impute NA values in dist_water using the mean
+distw_clean <- eval.im( ifelse(is.na(dist_water), media_distw, dist_water) ) #Compute the mean distance to water, ignoring NAs, so you can use it to fill in missing values.
+
+summary(as.vector(as.matrix(distw_clean)))
+
+# model - Linear
+mod_distw_clean <- ppm(bears_ppp, ~ dist_water, covariates = list(distw = distw_clean))
+mod_distw_clean
+```  
+```{r}
+
+#Plot the model predictions
+plot(mod_distw_clean,
+     se = FALSE,
+     superimpose = FALSE,
+     box = F)
+
+#Overlay the park locations
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.8,
+     cols = "white",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+
+```
+
+
+**Interpretation:**   
+
+```{r}
+distw_matrix <- as.matrix(dist_water)
+media_distw <- mean(as.vector(distw_matrix), na.rm = TRUE)
+cat("Mean distw (without NA):", media_distw, "\n")
+
+# Impute NA values using the mean
+distw_clean <- eval.im( ifelse(is.na(dist_water), media_distw, dist_water) )
+
+summary(as.vector(as.matrix(distw_clean)))
+
+# model
+mod_distw_clean_quad <- ppm(bears_ppp, ~ dist_water + I(dist_water^2), covariates = list(distw = distw_clean))
+mod_distw_clean_quad
+```  
+
+```{r}
+
+#Plot the model predictions
+plot(mod_distw_clean_quad,
+     se = FALSE,
+     superimpose = FALSE,
+     box = F)
+
+#Overlay the park locations
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.8,
+     cols = "white",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+
+```
+
+
+
+
+```{r}
+# model - Null
+mod_distw_clean_null <- ppm(bears_ppp, ~ 1)
+mod_distw_clean_null
+
+
+```
+
+
+#### Model evaluation
+
+```{r}
+# Compare models using AIC
+
+# Null model
+AIC(mod_distw_clean_null)
+
+# Linear model
+AIC(mod_distw_clean)
+
+# Quadratic model
+AIC(mod_distw_clean_quad)
+
+
+```
+**Interpretation**
+
+- Quadratic model has lowest AIC than null model. Therefore, fitted model with quadratic term of covariates (fit) is the better model
+
+- However note that the quadratic term was not significant.
+
+
+```{r}
+options(scipen = 0)
+# Likelihood Ratio Test 
+anova(mod_distw_clean_null, mod_distw_clean,  test = "LRT")
+```
+```{r}
+options(scipen = 0)
+# Likelihood Ratio Test 
+anova(mod_distw_clean_null, mod_distw_clean_quad,  test = "LRT")
+```
+```{r}
+options(scipen = 0)
+# Likelihood Ratio Test 
+anova(mod_distw_clean, mod_distw_clean_quad,  test = "LRT")
+```
+
+
+
+```{r}
+# Test whether the observed data deviate significantly from the model predictions.
+# Run the quadrat test
+quadrat.test(mod_distw_clean, nx = 2, ny = 2)
+```
+
+```{r}
+#Calculate the residuals
+res <- residuals(mod_distw_clean)
+
+#Visualise
+plot(res,
+     main = "Model residuals",
+     cols = "transparent")
+```
+
+
+
+```{r}
+mod_res_clean <- residuals(mod_distw_clean, type = "pearson")
+
+mod_res_clean$v[!is.finite(mod_res_clean$v)] <- NA
+
+# Residuals
+plot(mod_res_clean, main = "Model Residual Map (Pearson) - Imputed distw", na.col = "transparent")
+```  
+
+**Interpretation:** 
+
+
+### Seasonal analysis  
+
+```{r}
+# model for each season (individually)
+models_seasonal <- list()
+
+for (season in names(ppp_list)) {
+  models_seasonal[[season]] <- ppm(ppp_list[[season]], ~ dist_water, covariates = list(dist_water = distw_clean))
+  cat("Model for", season, ":\n")
+  print(models_seasonal[[season]])
+}
+```  
+
+**Interpretation:**
+
+
+```{r}
+# Combine the data from each season into a single data frame
+bears_all <- do.call(rbind, lapply(names(bears_sf_list), function(season) {
+  sf_season <- bears_sf_list[[season]]
+  coords <- st_coordinates(sf_season)
+  distw_vals <- extract(distw_raster, sf_season)
+  data.frame(x = coords[, 1], y = coords[, 2],
+             distw_value = distw_vals, season = season)
+}))
+
+# Convert "season" to a factor
+bears_all$season <- as.factor(bears_all$season)
+
+# Create a ppp object for the entire dataset using the defined study window.
+bears_ppp_all <- ppp(
+  x = bears_all$x,
+  y = bears_all$y,
+  window = window,
+  marks = bears_all$season
+)
+
+# Check how many points remain in the ppp object
+cat("Number of points in bears_ppp_all:", npoints(bears_ppp_all), "\n")
+
+# Retrieve the marks from the ppp object (these correspond to the points kept after rejection)
+current_marks <- marks(bears_ppp_all)
+
+# Convert the marks into a data frame with the correct number of rows
+marks(bears_ppp_all) <- data.frame(season = current_marks)
+
+# Fit the combined model including the interaction between Distance to water and season.
+mod_combined <- ppm(bears_ppp_all, ~ dist_water * marks, 
+                    covariates = list(dist_water = distw_clean))
+
+# Display the model summary
+mod_combined
+
+```  
+
+**Interpretation:** 
+
+### Check Collinearity among covariates
+
+```{r}
+elev_raster <- im2raster(elev)
+cover_raster <- im2raster(cover)
+hfi_raster <- im2raster(hfi)
+
+crs(elev_raster) <- CRS("+init=epsg:3005") 
+crs(cover_raster) <- CRS("+init=epsg:3005") 
+crs(hfi_raster) <- CRS("+init=epsg:3005") 
+
+bears_sf_proj$elev_value <- extract(elev_raster, bears_sf_proj)
+bears_sf_proj$cover_value <- extract(cover_raster, bears_sf_proj)
+bears_sf_proj$hfi_value <- extract(hfi_raster, bears_sf_proj)
+
+
+summary(bears_sf_proj$elev_value)
+summary(bears_sf_proj$cover_value)
+summary(bears_sf_proj$hfi_value)
+```  
+
+
+```{r}
+#Check for collinearity
+cov_df <- data.frame(
+  distw = bears_sf_proj$distw_value,
+  elev = bears_sf_proj$elev_value,
+  cover = bears_sf_proj$cover_value,
+  hfi = bears_sf_proj$hfi_value
+)
+# Remove rows with NAs
+cov_df_clean <- na.omit(cov_df)
+
+# Check Correlation Matrix
+cor_matrix <- cor(cov_df_clean)
+print(round(cor_matrix, 2))
+
+```
+
+
+### Model - Multi-covariate
+
+```{r}
+
+elev <- DATA$Elevation
+cover <- DATA$Forest
+dist_water <- DATA$Dist_Water
+hfi <- DATA$HFI
+
+model_all_linear <- ppm(bears_ppp, ~ elev + cover + dist_water + hfi, 
+               covariates = list(elev = elev, cover = cover, hfi = hfi, dist_water = dist_water))
+
+print(summary(model_all_linear))
+```
+
+```{r}
+
+elev <- DATA$Elevation
+cover <- DATA$Forest
+dist_water <- DATA$Dist_Water
+hfi <- DATA$HFI
+
+model_3var_linear <- ppm(bears_ppp, ~ elev + cover + hfi, 
+               covariates = list(elev = elev, cover = cover, hfi = hfi))
+
+print(summary(model_3var_linear))
+```
+
+
+```{r}
+model_all_quad <- ppm(bears_ppp, ~ elev + I(elev^2) + cover + I(cover^2) + dist_water + I(dist_water^2) + hfi + I(hfi^2), covariates = list(elev = elev, cover = cover, hfi = hfi, dist_water = dist_water))
+
+summary(model_all_quad)
+```
+#### Model evaluation
+
+
+```{r}
+# Compare models using AIC
+
+# Null model
+AIC(mod_distw_clean_null)
+
+# All 4 covariates Linear model
+AIC(model_all_linear)
+
+# 3 covariates Linear model (excluding distance to water)
+AIC(model_3var_linear)
+
+# All 4 covariates Quadratic model
+AIC(model_all_quad)
+
+
+```
