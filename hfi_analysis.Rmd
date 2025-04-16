@@ -33,7 +33,7 @@ summary(DATA)
 ```{r}
 # extract location columns
 bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
-bears_loc_filtered <- subset(bears_loc, year %in% c(2021, 2022, 2023, 2024))
+bears_loc_filtered <- subset(bears_loc, year %in% c(2020, 2021, 2022, 2023, 2024))
 
 # create sf object
 bears_sf <- st_as_sf(
@@ -156,7 +156,6 @@ hfi <- DATA$HFI
 
 
 ```{r}
-
 # intensity as a function of HFI (human footprint index)
 par(mfrow=c(2,2), mar=c(2,2,2,2))
 for (i in 1:length(ppp_list)) {
@@ -232,11 +231,13 @@ mod_hfi_clean <- ppm(bears_ppp, ~ hfi, covariates = list(hfi = hfi_clean))
 mod_hfi_clean
 ```  
 
-**Interpretation:** The HFI object was converted to a raster, a low mean was calculated, and missing values were imputed using that mean. Most of the values in the imputed raster are close to 0.09459, except for a few extremes.  
+**Interpretation:** The HFI object was processed into a raster image, which involves organizing the variable on a spatial grid in which each cell has a specific HFI value. The mean of all available values was then calculated (omitting the NAs) and obtained an approximate value of 0.09459. This mean represents a central measure of HFI in the analyzed region and is a global reflection of the conditions evaluated.  
 
-A point process model was fitted in which intensity depends on HFI. The coefficients indicate a significant positive relationship: areas with higher HFI values (although most are very low) are associated with higher intensity (or log-intensity) of bear occurrences.  
+Furthermore, to avoid problems arising from missing data in some cells, missing values were imputed using this same mean. By replacing the NAs with 0.09459, it is ensured that most cells in the raster share a very similar value, which is reflected in the statistical summary: both the median and the first and third quartiles are located around 0.09459. It is worth noting that, despite this homogeneity, some extreme values are observed, reaching up to 0.92381, indicating the presence of specific areas with significantly different conditions.  
 
-It is important to interpret the change in intensity in the context of the HFI scale. Small increases in HFI (from 0.09 to 0.19) could be biologically relevant, given the multiplicative effect derived from the coefficient on the logarithmic scale.  
+With these processed data, a point process model (ppm) was fitted where intensity, defined as the logarithm of intensity, is modeled as a function of HFI. The model returns two coefficients: the intercept (approximately -20.606402) and the HFI coefficient (approximately 5.888651). The latter indicates a positive relationship: higher HFI values increase intensity, which translates into a higher probability of bear occurrence in those areas. In essence, although most of the raster presents very similar values, increases in HFI are associated with a substantial increase in bear occurrence intensity, reflecting the model's sensitivity to variations in this variable.  
+
+In summary, these results highlight two key aspects: first, the imputation strategy generated a distribution highly concentrated around the mean, with a few exceptions; second, the positive relationship found in the model highlights that even modest variations in HFI can have a significant impact on bear presence.  
 
 ```{r}
 # Predict the intensity in the study region
@@ -247,7 +248,7 @@ plot(pred_intensity, main = "Predicted Intensity Map based on HFI")
 points(bears_ppp, pch = 20, col = "red")
 ```  
 
-**Interpretation:** The predicted intensity map shows that, based on the human footprint (HFI), most of the study area has very low intensities), indicating few expected events per unit area. Although the model shows a positive relationship between HFI and intensity, most HFI values are low, making the differences subtle. The overlay of actual occurrence points helps verify that, despite the reduced scale, the model captures spatial variation in areas with slight increases in HFI.
+**Interpretation:** The predicted intensity map shows that, based on the human footprint (HFI), most of the study area has very low intensities, indicating few expected events per unit area. Although the model shows a positive relationship between HFI and intensity, most HFI values are low, making the differences subtle. The overlay of actual occurrence points helps verify that, despite the reduced scale, the model captures spatial variation in areas with slight increases in HFI.
 
 ```{r}
 mod_res_clean <- residuals(mod_hfi_clean, type = "pearson")
@@ -274,7 +275,13 @@ for (season in names(ppp_list)) {
 }
 ```  
 
-**Interpretation:** The positive HFI coefficients at all stations imply that an increase in the human footprint is associated with an increase in the intensity of the point process (the bear occurrence rate), which is consistent with the relationship modeled in the global analysis. However, differences in the intercepts and slopes suggest slight seasonal variations in the spatial pattern. For example, in winter, for the same HFI value, the intensity is predicted to be generally lower than in summer (due to a more negative intercept), but with a more sensitive response to changes in HFI (larger coefficient). The warning of non-convergence in winter suggests that the behavior of the data for that station should be reviewed or alternative estimation methods should be considered.  
+**Interpretation:** First, the models for each season confirm that the coefficient associated with HFI is positive in all seasons. This implies that, regardless of the season, an increase in the human footprint is associated with an increase in the intensity (or rate) of bear occurrence. In other words, the higher the HFI value, the greater the probability of detecting bear presence.  
+
+Looking at the differences between seasons, it is notable that the winter model presents a more negative intercept (approximately -24.9955) compared to those for spring (-22.0330), summer (-21.1619), and autumn (-22.1355). This indicates that, for a given HFI value, the logarithmic intensity in winter is predicted to be lower. However, the HFI coefficient in winter (6.6671) is the highest, suggesting that, although the base intensity is lower, the effect of an increase in HFI is more pronounced in this season.  
+
+It is important to note that during the winter model fitting, a warning was issued stating that the fitting algorithm (glm) did not converge. This raises concerns about potential instability or complexity in the behavior of the data for that season, which may require further review or consideration of alternative estimation methods to obtain more reliable parameters.  
+
+In summary, the results suggest that, in all cases, increasing human footprints are associated with greater intensity of bear occurrence, although slight seasonal variations are observed in the intensity base and in the sensitivity to changes in HFI. These findings highlight the importance of considering the temporal component when interpreting the relationship between anthropogenic conditions and bear occurrence.  
 
 
 ```{r}
@@ -318,25 +325,17 @@ mod_combined
 
 **Interpretation:** 
 
-The model combines information from the HFI and the season (using "autumn" as the reference) to estimate the logarithm of the process intensity. For autumn, the equation is
+First, the bear data from each station was combined into a single dataset, generating a point-processing (PPP) object that incorporates seasonality as a marker. Problems were noted during this step, as some points were rejected for being located outside the study window, and duplicates were detected, resulting in 3,400 points for analysis.  
+
+The combined model was fitted by including the interaction between HFI and the variable season (with autumn as the reference). This allows both the intercept and slope associated with HFI to vary by season. In autumn, the following relationship is observed:  
 
 $$
-\log(\lambda) = -22.35 + 6.11 \times \text{HFI},
+\log(\lambda) = -22.2558 + 6.4079 \times \text{HFI}
 $$
 
-which indicates that the higher the HFI, the higher the predicted intensity. In spring and summer, adjustments are added: in spring, +0.218 is added to the intercept and the slope is reduced by 0.499 units, so that
+Meanwhile, in spring and summer, both the intercept and slope are adjusted, resulting in a slightly lower response to the HFI compared to autumn. In winter, although the intercept is lower, the slope increases significantly, implying that intensity responds more sensitively to changes in HFI.  
 
-$$
-\log(\lambda) = (-22.35 + 0.218) + (6.11 - 0.499) \times \text{HFI},
-$$
-
-and in summer, +1.010 is added to the intercept and the slope is reduced by 0.493, resulting in an effective slope similar to that of spring. In winter, however, the intercept decreases to -3.03 and the slope increases to +1.321, such that
-
-$$
-\log(\lambda) = (-22.35-3.03) + (6.11+1.321) \times \text{HFI},
-$$
-
-with an effective slope of approximately 7.43, implying that the intensity responds more sensitively to changes in HFI. It is important to note that a convergence warning was issued during the fitting, so estimates, especially in winter, should be interpreted with caution. 
+It is important to note that, during the fitting of the combined model, a warning was issued that the fitting algorithm (glm) did not converge, so it is suggested that the parameters be interpreted with caution, especially in winter.  
 
 ```{r}
 # Each row represents one occurrence, so we assign count = 1 to each one
@@ -348,27 +347,24 @@ gam_model <- gam(count ~ s(hfi_value) + season, data = bears_all, family = poiss
 summary(gam_model)
 ```  
 
-**Interpretation:** BAD BAD
+**Interpretation:** The fitted GAM model, which modeled the occurrence count (with 1 for each point) based on a smooth term for the variable hfi_value and a categorical effect of season, found no evidence of a significant effect for any of the predictors. The parametric coefficients associated with the intercept and seasons presented practically zero values, with relatively large standard errors and p-values of 1, indicating that, in this case, differences between seasons are not detectable.  
+
+Similarly, the smooth term for hfi_value had an effective degree of freedom (edf) equal to 1 and a chi-square statistic of 0, suggesting that the smooth function behaves like a straight line without any significant variation. Taken together, these results indicate that, based on this formulation of the GAM model, no significant relationship is observed between human footprint or seasonality with the frequency of bear occurrences in the analyzed dataset.  
 
 ```{r}
 mod_ppp <- ppm(bears_ppp_all, ~ polynom(hfi, degree = 2) + marks)
 mod_ppp
 ```
 
-**Interpretation:** The fitted model is a multitype point process with degree 2 polynomial covariates for the human footprint (HFI) and the incorporation of the season mark (which takes the values autumn, spring, summer, and winter). The model formula is:
+**Interpretation:** The fitted model is a nonstationary multitype point process that uses second degree polynomial terms in the HFI variable along with fixed season effects (with autumn as the reference) to model the logarithmic function of bear occurrence intensity, expressed as
 
 $$
-\log(\lambda) = \beta_0 + \beta_1 \,\text{HFI} + \beta_2 \,\text{HFI}^2 + \text{effects of marks}
+\log(\lambda) = \beta_0 + \beta_1\,\text{HFI} + \beta_2\,\text{HFI}^2 + \text{season effects}
 $$
 
-where b0 = -22.95, b1 = 11.50, and b2 = -6.76. This indicates that, in the reference category (autumn), the relationship between HFI and intensity has a curvilinear shape: an increase in HFI initially increases intensity (due to the positive coefficient of HFI), but at higher HFI values, the effect is moderated (or even reversed) by the negative coefficient of the quadratic term.
+In this case, the estimated intercept is -22.8075, with a linear coefficient for HFI of 11.7649 and a quadratic coefficient of -6.8904. These coefficients indicate that the relationship between the human footprint (HFI) and bear presence is curvilinear. For example, in an area where HFI is very low (say, 0.05), intensity (the bear appearance rate) is low, as HFI increases to a moderate value (say, 0.15), the positive influence of the linear term drives an increase in bear detections. However, as HFI continues to increase to high values (such as 0.8), the negative quadratic term comes into play, moderating and even reversing the effect, suggesting that in areas with high human activity, bears may avoid those areas and, therefore, their presence decreases.  
 
-Additionally, small seasonal effects are observed: compared to autumn, spring has a minimal effect (0.04), summer increases the intensity by 0.83 units on the logarithmic scale, and winter reduces the intensity by 2.46 units. The model, however, generates a warning indicating that in approximately 0.33% of the quadrature points, the HFI covariate values were NA or undefined. This usually occurs when the HFI raster does not provide data for certain points in the spatial domain, which could slightly affect the estimate in those areas, although the percentage is small. Overall, the model suggests a nonlinear relationship between HFI and the intensity of occurrences, with additional variations depending on the season.
+In addition, seasonal effects have been incorporated that adjust the base intensity additively. Compared to autumn (the reference category), the adjustments are very slight in spring, moderately positive in summer, and negative in winter. This implies that, for the same HFI value, the bear appearance rate may be higher in summer and lower in winter, reflecting the influence of seasonal conditions that add to the nonlinear HFI response.  
 
-
-
-
-
-
-
+In summary, the model suggests that the relationship between HFI and bear presence is complex, in areas with slight increases in human activity, bear presence increases, but when the human footprint becomes very high, bear presence decreases, and this dynamic varies seasonally.    
 
