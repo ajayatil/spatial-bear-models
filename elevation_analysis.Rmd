@@ -23,12 +23,9 @@ library(mgcv)
 # Loads data
 load("bc_bear_occurrences.Rda")
 load("BC_Covariates.Rda")
-
-# Generates summary of loaded data
-summary(DATA)
 ``` 
 
-### Visualizes bear occurrences in BC
+#### Visualizes bear occurrences in BC
 
 ```{r}
 # Extracts location columns
@@ -59,15 +56,10 @@ bears_ppp <- ppp(
   y = coords[,2],
   window = window
 )
-
-# Plots bear occurrences
-plot(bears_ppp, 
-     pch = 21, 
-     main = "Black bear occurrences in BC, 2024")
 ```
 
 
-### Compares seasonal distributions
+#### Compares seasonal distributions
 
 ```{r}
 # Defines the seasons and corresponding colors
@@ -128,28 +120,6 @@ for (i in 1:length(seasons)) {
 ```
 
 ```{r}
-# Plots four maps in a 2x2 grid
-par(mfrow=c(2,2), mar=c(1,1,1,1)) 
-
-# Loops over ppp objects and plots
-for (i in 1:length(ppp_list)) {
-  season_name <- names(ppp_list)[i]
-  suppressWarnings(
-    plot(ppp_list[[season_name]], 
-         main = paste(season_name, "(2024)"), 
-         pch = 21)
-  )
-}
-```
-
-
-```{r}
-# Visualizes covariates
-plot(DATA$Elevation)
-plot(DATA$Forest)
-plot(DATA$HFI)
-plot(DATA$Dist_Water)
-
 # Isolates covariates
 elev <- DATA$Elevation
 cover <- DATA$Forest
@@ -158,7 +128,7 @@ hfi <- DATA$HFI
 ```
 
 
-### Estimates the intensity of bear occurrences based on elevation
+#### Estimates the intensity of bear occurrences based on elevation
 
 ```{r}
 # Intensity as a function of elevation overall
@@ -206,7 +176,7 @@ summary(bears_sf_proj$elev_value)
 
 
 
-**KDE to estimate the concentration of bear occurrences based on elevation values. The elevation data for bear locations ranges from a minimum of 11.68 to a maximum of 2308.18, with most occurrences concentrated between 461.09 and 937.91  The mean elevation is 754.84, slightly higher than the median, indicating a skew towards higher elevations.**
+KDE to estimate the concentration of bear occurrences based on elevation values. The elevation data for bear locations ranges from a minimum of 11.68m to a maximum of 2308.18m, with most occurrences concentrated between 461.09m and 937.91m.  The mean elevation is 754.84m, slightly higher than the median, indicating a skew towards higher elevations.
 
 ```{r}
 # KDE for bear locations
@@ -217,14 +187,15 @@ summary(bears_sf_proj$elev_value)
 
 plot(kde_b,
      main = "Kernel Density Estimate of Elevation at Bear Locations",
-     xlab = "Elevation",
+     xlab = "Elevation (m)",
      ylab = "Density",
      col = "#2C6B2F", 
      lwd = 2)  
 ```
 
 
-### Models elevation
+#### Models elevation
+
 
 ```{r}
 # NA with mean elevation
@@ -239,19 +210,25 @@ print(elevation_model)
 pred_intensity_elev <- predict(elevation_model)
 plot(pred_intensity_elev, 
      main = "Predicted Intensity Based on Elevation")
-points(bears_ppp, 
-       pch = 20, 
-       cex = 0.4,
-       col = "cyan")
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "white",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.4,
+     cols = "black",
+     add = TRUE)
 ```
 
 
 
-**Fitted model: Intercept: -17.37; Elevation coefficient: -0.0025. The negative coefficient for elevation indicates that, as elevation increases, the expected intensity  of bear occurrences decreases. This suggests that bears are less likely to be found at higher elevations.**
+Fitted model: Intercept: -17.37; Elevation coefficient: -0.0025. The negative coefficient for elevation indicates that, as elevation increases, the expected intensity  of bear occurrences decreases. This suggests that bears are less likely to be found at higher elevations.
 
 
 
-### Computes and plots residuals of the point process model fitted to elevation data.  Using Pearson residuals and removing any non-finite residuals.
+#### Computes and plots residuals of the point process model fitted to elevation data.  Using Pearson residuals and removing any non-finite residuals.
 
 ```{r}
 # Establishes elevation residuals
@@ -268,7 +245,7 @@ plot(elevation_residuals,
 ```
 
 
-### Partial Residuals
+#### Partial Residuals
 
 ```{r}
 # Elevation model
@@ -282,7 +259,7 @@ plot(par_res_elev_all,
      legend = FALSE,
      lwd = 2,
      main = "Partial Residuals Elevation - All Seasons",
-     xlab = "Elevation (km)",
+     xlab = "Elevation (m)",
      ylab = "Partial Residuals")
 ```
 ```{r}
@@ -303,7 +280,7 @@ for (season in names(models_elev_seasonal)) {
        legend = FALSE,
        lwd = 2,
        main = paste("Partial Residuals - Elevation", season),
-       xlab = "Elevation (km)",
+       xlab = "Elevation (m)",
        ylab = "Partial Residuals")
 }
 ```
@@ -332,15 +309,15 @@ bears_all_elevation$count <- 1
 
 
 
-**Winter: Intercept: -20.28; Elevation Coefficient: -0.0049. For winter, the negative coefficient for elevation indicates that bear occurrences decrease as elevation increases. The model did not converge, so caution is needed in interpreting the results.**
+Winter: Intercept: -20.28; Elevation Coefficient: -0.0049. For winter, the negative coefficient for elevation indicates that bear occurrences decrease as elevation increases. The model did not converge, so caution is needed in interpreting the results.
 
-**Spring: Intercept: -18.94; Elevation Coefficient: -0.0024. In spring, the relationship between elevation and bear occurrences is also negative, with a slight decrease in occurrences as elevation increases. However, the model showed some issues with convergence.**
+Spring: Intercept: -18.94; Elevation Coefficient: -0.0024. In spring, the relationship between elevation and bear occurrences is also negative, with a slight decrease in occurrences as elevation increases. However, the model showed some issues with convergence.
 
-**Summer: Intercept: -18.21; Elevation Coefficient: -0.0022. Summer shows a similar negative relationship, with bear occurrences decreasing slightly as elevation increases.**
+Summer: Intercept: -18.21; Elevation Coefficient: -0.0022. Summer shows a similar negative relationship, with bear occurrences decreasing slightly as elevation increases.
 
-**Autumn: Intercept: -18.51; Elevation Coefficient: -0.0031. In autumn, bear occurrences also decrease with elevation, with a slightly stronger negative coefficient compared to spring and summer.**
+Autumn: Intercept: -18.51; Elevation Coefficient: -0.0031. In autumn, bear occurrences also decrease with elevation, with a slightly stronger negative coefficient compared to spring and summer.
 
-**All seasons show a negative relationship between bear occurrences and elevation. Winter has the largest negative coefficient (-0.0049), meaning a stronger decrease in occurrences with elevation.**
+All seasons show a negative relationship between bear occurrences and elevation. Winter has the largest negative coefficient (-0.0049), meaning a stronger decrease in occurrences with elevation.
 
 ```{r}
 # GAM with elevation and season
@@ -349,7 +326,7 @@ summary(gam_elevation)
 ```
 
 
-**GAM results suggest that neither elevation nor season has a significant influence on the spatial distribution of bear locations. Warnings about the model fitting process suggest that the results may not be reliable.**
+GAM results suggest that neither elevation nor season has a significant influence on the spatial distribution of bear locations. Warnings about the model fitting process suggest that the results may not be reliable.
 
 
 ```{r}
@@ -374,13 +351,13 @@ cat("AIC for gam model: ", AIC(gam_elevation), "\n")
 ```
 
 
-**Model shows a negative relationship between bear locations and elevation, suggesting bears are less likely to be found at higher elevations. Quadratic term suggests a slight non-linear effect, but primary relationship appears negative. Model also indicates that summer sees the highest concentration of bear points, while winter has an expected decrease in bear points. Spring also shows a negative effect, although it is smaller than winter's effect.**
+Model shows a negative relationship between bear locations and elevation, suggesting bears are less likely to be found at higher elevations. Quadratic term suggests a slight non-linear effect, but primary relationship appears negative. Model also indicates that summer sees the highest concentration of bear points, while winter has an expected decrease in bear points. Spring also shows a negative effect, although it is smaller than winter's effect.
 
-**Bears tend to prefer lower elevations (based on the negative relationship with elevation). The summer season has the highest bear presence, while winter and spring have much lower bear occurrences, as to be expected.**
+Bears tend to prefer lower elevations (based on the negative relationship with elevation). The summer season has the highest bear presence, while winter and spring have much lower bear occurrences, as to be expected.
 
 
 
-### Creates a point pattern object for each season
+#### Creates a point pattern object for each season
  
 ```{r}
 # Creates seasonal ppp objects
@@ -405,7 +382,7 @@ dist_water <- DATA$Dist_Water
 
 
 
-### Calculates and plots the Kernel Density Estimate for bear occurrences per each season
+#### Calculates and plots the Kernel Density Estimate for bear occurrences per each season
 
 ```{r}
 # KDE comparison
@@ -418,34 +395,7 @@ for (s in names(dens_list)) {
 
 
 
-### Performs quadrat test for each season to analyze the spatial pattern of bear occurrences
-
-```{r}
-# Quadrat test per season
-for (s in names(ppp_list)) {
-  qt <- quadrat.test(ppp_list[[s]], nx = 5, ny = 5)
-  print(qt)
-  plot(qt, 
-       main = paste("Quadrat test -", s))
-}
-```
-
-
-**Dividing area into a grid of 5x5 and testing for deviations from a random distribution. Bear locations do not follow a random distribution and show spatial clustering across all seasons, meaning their presence is likely influenced by specific environmental or ecological factors that are season-dependent. The quadrant test results suggest that for all seasons (winter, spring, summer, and autumn), bear locations exhibit significant spatial clustering or non-random patterns rather than being randomly distributed (as indicated by the very small p-values).**
-
-**Bear distribution is influenced by factors other than randomness, such as environmental features, resource availability, or behavior patterns that vary across seasons.**
-
-**Winter: X2 = 561.39, p-value < 2.2e-16. P-value indicates a strong deviation from CSR for winter, suggesting that bear locations are not randomly distributed in the winter season.**
-
-**Spring: X2 = 2202.7, p-value < 2.2e-16. Test statistic is very large, and the p-value is highly significant, indicating that the bear locations in spring also show non-random clustering or patterns.**
-
-**Summer: X2 = 3767, p-value < 2.2e-16. Summer further supports a non-random pattern, with an even higher test statistic and significant p-value.**
-
-**Autumn: X2  = 2720.5, p-value < 2.2e-16. Autumn shows a significant departure from CSR, confirming that bear locations are non-randomly distributed.**
-
-
-
-### Fits an inhomogeneous Poisson ppm for each season using elevation. Model predicts intensity and plots for each season.
+#### Fits an inhomogeneous Poisson ppm for each season using elevation. Model predicts intensity and plots for each season.
 
 ```{r}
 # Inhomogeneous Poisson model per season
@@ -458,7 +408,7 @@ for (s in names(ppp_list)) {
 
 
 
-### Fits a multivariate Poisson Point Process model to bear occurrences for each season, considering all covariates: elevation, forest cover, hfi, and distance to water. Predicts intensity and plots for each season.
+#### Fits a multivariate Poisson Point Process model to bear occurrences for each season, considering all covariates: elevation, forest cover, hfi, and distance to water. Predicts intensity and plots for each season.
 
 ```{r}
 # Multivariate ppm
@@ -470,11 +420,11 @@ for (s in names(ppp_list)) {
 }
 ```
 
-**For each season - assessing spatial distribution of bear occurrences (I.e., clustered, dispersed, or randomly distributed)**
+For each season - assessing spatial distribution of bear occurrences (I.e., clustered, dispersed, or randomly distributed)
 
 
 
-### Ripley's K with isotropic correction for statistical efficiency
+#### Ripley's K
 
 ```{r}
 # Ripley's K with Envelope for each season
@@ -496,15 +446,15 @@ for (s in names(ppp_list)) {
 ```
 
 
-**Across all four seasons, the Ripley's K function plots show a pattern of clustering. This can be concluded as the estimated K functions (`iso`, `trans`, `bord`) are generally significantly above the expected K function under complete spatial randomness and they often lie outside the simulation envelope.**
+Across all four seasons, the Ripley's K function plots show a pattern of clustering. This can be concluded as the estimated K functions (`iso`, `trans`, `bord`) are generally significantly above the expected K function under complete spatial randomness and they often lie outside the simulation envelope.
 
-**Winter: Clustering may reflect limited movement due to snow, or congregation around scarce food sources during milder periods. It could also be indirectly related to dens.**
+Winter: Clustering may reflect limited movement due to snow, or congregation around scarce food sources during milder periods. It could also be indirectly related to dens.
 
-**Spring: Clustering could indicate post-hibernation dispersal patterns, concentration around newly available food sources, habitat preferences, or potential attraction to human-related food.**
+Spring: Clustering could indicate post-hibernation dispersal patterns, concentration around newly available food sources, habitat preferences, or potential attraction to human-related food.
 
-**Summer: Clustering may reflect the distribution of abundant food resources, proximity to water sources, preferred habitats, and ongoing attraction to human-related food during peak bear activity.**
+Summer: Clustering may reflect the distribution of abundant food resources, proximity to water sources, preferred habitats, and ongoing attraction to human-related food during peak bear activity.
 
-**Autumn: Clustering could reflect bears concentrating on late-season food sources for hibernation, movements related to finding den sites, and continued attraction to human-related food as natural food availability changes.**
+Autumn: Clustering could reflect bears concentrating on late-season food sources for hibernation, movements related to finding den sites, and continued attraction to human-related food as natural food availability changes.
 
 
 
