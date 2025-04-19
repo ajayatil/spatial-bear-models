@@ -24,7 +24,7 @@ library(mgcv)
 load("bc_bear_occurrences.Rda")
 load("BC_Covariates.Rda")
 
-# Generates summary of loadedd data
+# Generates summary of loaded data
 summary(DATA)
 ``` 
 
@@ -61,7 +61,9 @@ bears_ppp <- ppp(
 )
 
 # Plots bear occurrences
-plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2024")
+plot(bears_ppp, 
+     pch = 21, 
+     main = "Black bear occurrences in BC, 2024")
 ```
 
 
@@ -154,6 +156,8 @@ cover <- DATA$Forest
 dist_water <- DATA$Dist_Water
 hfi <- DATA$HFI
 ```
+
+
 ### Estimates the intensity of bear occurrences based on elevation
 
 ```{r}
@@ -165,7 +169,7 @@ plot(rho,
 ```  
 
 ```{r}
-# intensity as a function of elevation broken up by seasons
+# Intensity as a function of elevation broken up by seasons
 par(mfrow=c(2,2), mar=c(2,2,2,2))
 
 for (i in 1:length(ppp_list)) {
@@ -251,7 +255,8 @@ points(bears_ppp,
 
 ```{r}
 # Establishes elevation residuals
-elevation_residuals <- residuals(elevation_model, type = "pearson")
+elevation_residuals <- residuals(elevation_model, 
+                                 type = "pearson")
 
 # Removes any non-finite residuals
 elevation_residuals$v[!is.finite(elevation_residuals$v)] <- NA
@@ -277,7 +282,7 @@ plot(par_res_elev_all,
      legend = FALSE,
      lwd = 2,
      main = "Partial Residuals Elevation - All Seasons",
-     xlab = "Elevation (m)",
+     xlab = "Elevation (km)",
      ylab = "Partial Residuals")
 ```
 ```{r}
@@ -298,7 +303,7 @@ for (season in names(models_elev_seasonal)) {
        legend = FALSE,
        lwd = 2,
        main = paste("Partial Residuals - Elevation", season),
-       xlab = "Elevation (m)",
+       xlab = "Elevation (km)",
        ylab = "Partial Residuals")
 }
 ```
@@ -406,7 +411,8 @@ dist_water <- DATA$Dist_Water
 # KDE comparison
 dens_list <- lapply(ppp_list, function(p) density(p, sigma = 10000))
 for (s in names(dens_list)) {
-  plot(dens_list[[s]], main = paste("KDE Surface -", s))
+  plot(dens_list[[s]], 
+       main = paste("KDE Surface -", s))
 }
 ```
 
@@ -419,7 +425,8 @@ for (s in names(dens_list)) {
 for (s in names(ppp_list)) {
   qt <- quadrat.test(ppp_list[[s]], nx = 5, ny = 5)
   print(qt)
-  plot(qt, main = paste("Quadrat test -", s))
+  plot(qt, 
+       main = paste("Quadrat test -", s))
 }
 ```
 
@@ -444,7 +451,8 @@ for (s in names(ppp_list)) {
 # Inhomogeneous Poisson model per season
 for (s in names(ppp_list)) {
   model <- ppm(ppp_list[[s]] ~ elev, covariates = list(elev = elevation))
-  plot(predict(model), main = paste("Intensity ~ Elevation -", s))
+  plot(predict(model), 
+       main = paste("Intensity ~ Elevation -", s))
 }
 ```
 
@@ -457,7 +465,8 @@ for (s in names(ppp_list)) {
 for (s in names(ppp_list)) {
   model <- ppm(ppp_list[[s]] ~ elev + cover + hfi + dist_water,
                covariates = list(elev = elevation, cover = cover, hfi = hfi, dist_water = dist_water))
-  plot(predict(model), main = paste("Predicted Intensity -", s))
+  plot(predict(model), 
+       main = paste("Predicted Intensity -", s))
 }
 ```
 
@@ -465,7 +474,7 @@ for (s in names(ppp_list)) {
 
 
 
-### Ripley's K
+### Ripley's K with isotropic correction for statistical efficiency
 
 ```{r}
 # Ripley's K with Envelope for each season
@@ -487,6 +496,15 @@ for (s in names(ppp_list)) {
 ```
 
 
+**Across all four seasons, the Ripley's K function plots show a pattern of clustering. This can be concluded as the estimated K functions (`iso`, `trans`, `bord`) are generally significantly above the expected K function under complete spatial randomness and they often lie outside the simulation envelope.**
+
+**Winter: Clustering may reflect limited movement due to snow, or congregation around scarce food sources during milder periods. It could also be indirectly related to dens.**
+
+**Spring: Clustering could indicate post-hibernation dispersal patterns, concentration around newly available food sources, habitat preferences, or potential attraction to human-related food.**
+
+**Summer: Clustering may reflect the distribution of abundant food resources, proximity to water sources, preferred habitats, and ongoing attraction to human-related food during peak bear activity.**
+
+**Autumn: Clustering could reflect bears concentrating on late-season food sources for hibernation, movements related to finding den sites, and continued attraction to human-related food as natural food availability changes.**
 
 
 
