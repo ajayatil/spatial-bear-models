@@ -206,7 +206,7 @@ summary(bears_sf_proj$elev_value)
 
 
 
-**KDE to estimate the concentration of bear occurrences based on elevation values. The elevation data for bear locations ranges from a minimum of 11.68 meters to a maximum of 2308.18 meters, with most occurrences concentrated between 461.09 meters and 937.91 meters. The mean elevation is 754.84 meters, slightly higher than the median, indicating a skew towards higher elevations.**
+**KDE to estimate the concentration of bear occurrences based on elevation values. The elevation data for bear locations ranges from a minimum of 11.68 to a maximum of 2308.18, with most occurrences concentrated between 461.09 and 937.91  The mean elevation is 754.84, slightly higher than the median, indicating a skew towards higher elevations.**
 
 ```{r}
 # KDE for bear locations
@@ -217,7 +217,7 @@ summary(bears_sf_proj$elev_value)
 
 plot(kde_b,
      main = "Kernel Density Estimate of Elevation at Bear Locations",
-     xlab = "Elevation (meters)",
+     xlab = "Elevation",
      ylab = "Density",
      col = "#2C6B2F", 
      lwd = 2)  
@@ -242,7 +242,7 @@ plot(pred_intensity_elev,
 points(bears_ppp, 
        pch = 20, 
        cex = 0.4,
-       col = "#B24A2F")
+       col = "cyan")
 ```
 
 
