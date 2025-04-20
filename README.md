@@ -3,10 +3,10 @@ Project investigates the spatial patterns of bear occurrences using environmenta
 
 ## Project Overview
 This project explores how environmental variables broken out into the seasons influence bear occurrences in British Columbia, Canada. We use spatial statistical techniques in R to analyze the relationships between bear locations and four covariates:
-Elevation: Altitude of different areas
-Human Footprint Index (HFI): Measure of human influence on landscape
-Distance to Water: Proximity to water bodies
-Forest Cover: Percentage of forested area
+- Elevation: Altitude of different areas
+- Human Footprint Index (HFI): Measure of human influence on landscape
+- Distance to Water: Proximity to water bodies
+- Forest Cover: Percentage of forested area
 
 The analysis incorporates spatial dependencies between the observations, providing insights into spatial autocorrelation and patterns.
 
