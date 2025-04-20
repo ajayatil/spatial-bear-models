@@ -11,7 +11,7 @@ This project explores how environmental variables broken out into the seasons in
 The analysis incorporates spatial dependencies between the observations, providing insights into spatial autocorrelation and patterns.
 
 ### Installation
-Several R packages are required to run this project - please use install.packages() function in R. The key packages needed are as follows:
+Several R packages are required to run this project - please use `install.packages()` function in R. The key packages needed are as follows:
 - `sp`: Handling spatial data 
 - `sf`: Handling spatial vector data
 - `spatstat`: Analysis of spatial point patterns
