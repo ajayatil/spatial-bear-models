@@ -39,5 +39,11 @@ Re-project spatial data to a common coordinate system
 Fit spatial regression models 
 
 
+### Acknowledgements
+We would like to acknowledge the contributions from various sources:
+
+- `R` Community: For providing open-source packages that were essential for the analysis and visualization in this project.
+- Global Biodiversity Information Facility (GBIF): For offering valuable species occurrence data, which enabled analysis on Ursus americanus.
+
 ## License
-This project is licensed under the MIT License
+[This project is licensed under the MIT License?]
