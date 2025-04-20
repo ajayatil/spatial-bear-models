@@ -12,13 +12,13 @@ The analysis incorporates spatial dependencies between the observations, providi
 
 ### Installation
 Several R packages are required to run this project - please use install.packages() function in R. The key packages needed are as follows:
-`sp`: Handling spatial data 
-`sf`: Handling spatial vector data
-`spatstat`: Analysis of spatial point patterns
-`rgbif`: Accessing data from the Global Biodiversity Information Facility (GBIF) to work with species occurrence data
-`ggplot2`: Data visualization and plotting
-`tidyverse`: Collection of packages for data manipulation, visualization, and analysis
-`raster`: Working with raster data 
+- `sp`: Handling spatial data 
+- `sf`: Handling spatial vector data
+- `spatstat`: Analysis of spatial point patterns
+- `rgbif`: Accessing data from the Global Biodiversity Information Facility (GBIF) to work with species occurrence data
+- `ggplot2`: Data visualization and plotting
+- `tidyverse`: Collection of packages for data manipulation, visualization, and analysis
+- `raster`: Working with raster data 
 
 ## Data
 [...]
@@ -32,7 +32,7 @@ The key steps in the analysis are:
 
 Import and clean the data.
 
-Reproject spatial data to a common coordinate system 
+Re-project spatial data to a common coordinate system 
 
 ### Model Fitting:
 
@@ -40,4 +40,4 @@ Fit spatial regression models
 
 
 ## License
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License
