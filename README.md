@@ -58,11 +58,21 @@ We would like to acknowledge the contributions from various sources:
 
 ### Contributors  
 
-## Contributors
-- [![Vidal Tinoco](https://github.com/VidalTinoco.png?size=40)](https://github.com/VidalTinoco) — @VidalTinoco  
-- [![Kelsey Strachan](https://github.com/kstrachan556.png?size=40)](https://github.com/kstrachan556) — @kstrachan556
-- [![Jane Shen](https://github.com/j232shen.png?size=40)](https://github.com/j232shen) — @j232shen
-- [![Amali Jayatileke](https://github.com/ajayatil.png?size=40)](https://github.com/ajayatil) — @ajayatil  
+<a href="https://github.com/VidalTinoco" target="_blank">
+  <img src="https://github.com/VidalTinoco.png?size=40" width="20" height="20" alt="@VidalTinoco" />
+</a> **@VidalTinoco**  
+
+<a href="https://github.com/kstrachan556" target="_blank">
+  <img src="https://github.com/kstrachan556.png?size=40" width="20" height="20" alt="@kstrachan556" />
+</a> **@kstrachan556**  
+
+<a href="https://github.com/j232shen" target="_blank">
+  <img src="https://github.com/j232shen.png?size=40" width="20" height="20" alt="@j232shen" />
+</a> **@j232shen**  
+
+<a href="https://github.com/ajayatil" target="_blank">
+  <img src="https://github.com/ajayatil.png?size=40" width="20" height="20" alt="@ajayatil" />
+</a> **@ajayatil**  
 
 ## License
 This project is licensed under the MIT License.
