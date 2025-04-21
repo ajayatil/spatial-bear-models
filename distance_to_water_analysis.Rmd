@@ -1,0 +1,644 @@
+---
+title: "DATA 589 Project - Single covariate modelling - Distance to Water"
+author: "Amali Jayatileke"
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%OS')`"
+output:
+  html_document:
+    toc: true
+    theme: cerulean
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Single Covariate Analysis for 'Distance to Water'
+
+```{r, include=FALSE}
+#load packages
+library(sp)
+library(sf)
+library(spatstat)
+library(rgbif)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(tidyverse)
+library(raster)
+library(mgcv)
+```
+
+### Load bears dataset
+
+```{r}
+# # get occurrences from GBIF
+#bc_occ <- occ_search(
+#   scientificName = "Ursus americanus",
+#   country = "CA",
+#   stateProvince = "British Columbia",
+#   limit = 5000
+# )
+ 
+ # omit records with missing coordinates
+#occ_data <- bc_occ$data[!is.na(bc_occ$data$decimalLongitude) & !is.na(bc_occ$data$decimalLatitude), ]
+ 
+# save occurrences
+#save(occ_data, file = "bc_bear_occurrences2.Rda")
+```
+
+```{r}
+# load and view data
+load("bc_bear_occurrences.Rda")
+str(occ_data)
+```
+
+### Load covariates
+
+```{r}
+load("BC_Covariates.Rda")
+summary(DATA)
+```
+
+### Create ppp object
+
+```{r}
+# extract location columns
+bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
+bears_loc_filtered <- subset(bears_loc, year %in% c(2020, 2021, 2022, 2023, 2024))
+#bears_loc_filtered <- subset(bears_loc, year %in% c(2024))
+
+# create sf object
+bears_sf <- st_as_sf(
+  bears_loc_filtered,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326  # WGS84 (longitude/latitude)
+)
+
+# BC Albers projection
+bears_sf_proj <- st_transform(bears_sf, crs = 3005)
+
+# extract x, y coordinates
+coords <- st_coordinates(bears_sf_proj)
+
+# extract BC window
+window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
+window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
+window <- as.owin(window_proj) # convert to owin using sf object
+
+# To avoid plotting points outside window (illegal points)
+# Intersect points with window
+#bears_sf_proj_filtered <- bears_sf_proj[st_within(bears_sf_proj, window_proj, sparse = FALSE), ]
+bears_sf_proj <- subset(bears_sf_proj, st_within(bears_sf_proj, window_proj, sparse = FALSE))
+
+# Re-extract coordinates
+coords_filtered <- st_coordinates(bears_sf_proj)
+
+# Create new ppp object
+bears_ppp <- ppp(
+ x = coords_filtered[, 1],
+ y = coords_filtered[, 2],
+ window = window
+)
+
+#plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020 - 2024")
+
+```
+
+### Create ppp objects for seasons
+
+```{r}
+# Define the seasons and corresponding colors
+seasons <- list(
+  winter = c(12, 1, 2),
+  spring = c(3, 4, 5),
+  summer = c(6, 7, 8),
+  autumn = c(9, 10, 11)
+)
+
+# Create an empty list to store the ppp objects for each season
+ppp_list <- list()
+
+# Create an empty list to store the filtered data for each season
+bears_sf_list <- list()
+
+# Loop over seasons
+for (i in 1:length(seasons)) {
+  
+  # Filter for each season
+  season_name <- names(seasons)[i]
+  season_months <- seasons[[i]]
+  
+  # Filter bears_loc_filtered by the season's months
+  bears_loc_season <- bears_loc_filtered[bears_loc_filtered$month %in% season_months, ]
+  
+  # Print the number of observations for this season
+  cat(season_name, ": ", nrow(bears_loc_season), " observations\n", sep="")
+  
+  # Create sf object for the filtered season
+  bears_sf_season <- st_as_sf(
+    bears_loc_season,
+    coords = c("decimalLongitude", "decimalLatitude"),
+    crs = 4326  # WGS84 (longitude/latitude)
+  )
+  
+  # Transform to BC Albers projection
+  bears_sf_season_proj <- st_transform(bears_sf_season, crs = 3005)
+  
+  # Store sf object in the list
+  bears_sf_list[[season_name]] <- bears_sf_season_proj
+  
+  # Extract x, y coordinates
+  coords <- st_coordinates(bears_sf_season_proj)
+  
+  # Create ppp object for each season
+  suppressWarnings(
+    bears_ppp_season <- ppp(
+      x = coords[, 1],
+      y = coords[, 2],
+      window = window
+    )
+  )
+  
+  # Store ppp object in the list
+  ppp_list[[season_name]] <- bears_ppp_season
+}
+```
+
+
+### EDA
+
+```{r}
+elev <- na.omit(DATA$Elevation)
+cover <- na.omit(DATA$Forest)
+dist_water <- na.omit(DATA$Dist_Water)
+hfi <- na.omit(DATA$HFI)
+
+```
+
+```{r}
+is.im(dist_water)          # should return TRUE
+is.ppp(bears_ppp)          # should return TRUE
+
+```
+
+#### Intensity plots
+
+```{r, cache = TRUE}
+# Overall
+# intensity as a function of distance from water
+rho <- rhohat(bears_ppp, dist_water) 
+plot(rho, xlim=c(0, max(dist_water)), main = "Estimated rho vs Distance to Water", xlab = "Distance to water")
+
+```
+
+**Interpretation:**
+
+-   Higher Intensity Close to Water
+
+    -   At **short distances (0–2000 meters)**, the black line is **above** the red dashed line. This suggests that **bear occurrences are more likely near water** than average.
+
+-   **Decreasing Intensity With Distance**
+
+    -   As distance to water increases (beyond \~5000 meters), the relative intensity generally **declines**, often dipping below the mean (red dashed line). This means **bears are less likely to be found farther from water.**
+
+-   **Multiple Peaks at Mid-Range Distances**
+
+    -   There are small **bumps at \~3000, \~8000, and \~13000 meters**. These could indicate:
+
+    -   Presence of **habitat patches** or **water-proximate features** that bears favor.
+
+    -   **Random placement** of some bear points that just happen to cluster around a certain distance (e.g., \~10,000m from water) purely by chance.
+
+    -   **Noise** or **measurement errors**
+
+    -   Small sample size, bumps after 5000 m have larger confidence bands indicating high uncertainty due to smaller number of data point.
+
+    -   Possibly transitional areas like wetlands or secondary water sources.
+
+-   **Wide Confidence Band Beyond \~15000m**
+
+    -   The grey band becomes **very wide** beyond 15,000 meters, and the estimate drops near zero.
+
+    -   **Very few data points** (bear locations or quadrature points) are this far from water.
+
+-   **Conclusion** Bear occurrences are strongly concentrated near water. There is a clear negative relationship between bear intensity and distance to water: the farther from water, the less likely a bear is to be found. This supports the ecological hypothesis that proximity to water is a key driver of black bear spatial distribution in BC.
+
+```{r, cache = TRUE, fig.width = 10, fig.height = 5}
+par(mfrow = c(2,2), mar = c(4, 4, 3, 2))
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  rho <- rhohat(ppp_list[[season_name]], dist_water) 
+  plot(rho, legend = FALSE, xlim = c(0, max(dist_water)), main = paste(season_name))
+  legend("topright", legend = c(expression(hat(rho)(dist_water)), expression(bar(rho))), 
+         col = c("black", "red"), lty = c(1, 2), bty = "n")
+}
+
+```
+
+**Interpretation**
+
+1.  Winter
+
+-   Moderate positive intensity at 3,000–8,000m, peaking slightly around 7,000–8,000m.
+
+-   Confidence bands widen after \~8,000m, suggesting fewer observations.
+
+-   Little to no bear activity at farther distances (\>15,000m).
+
+**Interpretation:** Bears may be located in moderately water-proximate areas during winter, possibly due to denning or reduced mobility.
+
+2.  Spring
+
+-   Sharp initial rise, fluctuating but generally high intensity between 0–10,000m.
+
+-   Peaks between 2,000–5,000m and 8,000–10,000m.
+
+-   Wider confidence intervals suggest less certainty in the far range.
+
+**Interpretation:**Spring shows stronger proximity preference to water, likely due to post-hibernation activity, foraging, or mating behavior.
+
+3.  Summer
+
+-   Very strong intensity peaks near 7,000m and 12,000–14,000m.
+
+-   Complex structure—multiple peaks and valleys.
+
+-   Wider confidence intervals indicate heterogeneity in behavior or data sparsity.
+
+**Interpretation:** Summer suggests localized hotspots of bear activity, possibly reflecting feeding grounds or specific habitat zones near water.
+
+4.  Autumn
+
+-   Overall high intensity near 2,000–6,000m, then multiple sharp peaks at 9,000–14,000m.
+
+-   Some intensity estimates exceed the mean line, indicating strong preference in those zones.
+
+**Interpretation:** Bears may be preparing for hibernation and seeking resources—like streams or food patches near water—resulting in varied but elevated usage across mid-range distances.
+
+**Key Takeaways:**
+
+-   Bears show non-linear, seasonal-specific relationships with distance to water.
+
+-   There's no consistent monotonic trend; instead, multiple peaks suggest preferred zones or habitat patchiness.
+
+-   Confidence bands widen beyond \~10–12 km, so interpretation is less reliable at far distances.
+
+```{r, cache = TRUE}
+# Seasonal 
+# intensity as a function of distance from water
+#par(mfrow=c(2,2), mar=c(2,2,2,2))
+#for (i in 1:length(ppp_list)) {
+#  season_name <- names(ppp_list)[i]
+#  rho <- rhohat(ppp_list[[season_name]], dist_water) 
+#  plot(rho, xlim=c(0, max(dist_water)), main = paste(season_name))
+#}
+```
+
+```{r}
+# Distance to water for bears locations
+
+# im object to RasterLayer
+im2raster <- function(im_obj) {
+  # iamge to matrix
+  m <- as.matrix(im_obj)
+  # create raster object
+  r <- raster(m)
+  # range and extension
+  ext <- c(im_obj$xrange[1] - im_obj$xstep/2,
+           im_obj$xrange[2] + im_obj$xstep/2,
+           im_obj$yrange[1] - im_obj$ystep/2,
+           im_obj$yrange[2] + im_obj$ystep/2)
+  extent(r) <- ext
+  return(r)
+}
+
+# dist_water to RasterLayer
+distw_raster <- im2raster(dist_water)
+
+# dist_water in bear locations
+bears_sf_proj$distw_value <- raster::extract(distw_raster, bears_sf_proj) #For each bear point, extract the distance to water value from the raster.
+
+summary(bears_sf_proj$distw_value)
+```
+
+```{r}
+hist(bears_sf_proj$distw_value, 
+     main = "Distance to Water at bear locations", 
+     xlab = "Distance to Water",
+     col = "lightblue", border = "grey")
+
+```
+
+```{r}
+distw_values <- getValues(distw_raster)
+
+hist(distw_values, 
+     main = "Global distribution of Distance to Water in BC", 
+     xlab = "Distance to Water",
+     col = "lightblue3", border = "grey")
+```
+
+### Distance to Water effects
+
+```{r}
+
+# Modelling without raster object
+# model - Linear
+mod_distw_clean <- ppm(bears_ppp, ~ dist_water, covariates = list(dist_water))
+mod_distw_clean
+```
+
+```{r}
+
+#Plot the model predictions
+plot(mod_distw_clean,
+     se = FALSE,
+     superimpose = FALSE,
+     box = F,
+     main = "Model predictions - Linear effects")
+
+#Overlay the bear occurences
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.7,
+     cols = "white",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+
+```
+
+```{r}
+
+# Modelling without raster object
+# model - Quadratic
+mod_distw_clean_quad <- ppm(bears_ppp, ~ dist_water + I(dist_water^2), covariates = list(dist_water))
+mod_distw_clean_quad
+```
+
+```{r}
+
+#Plot the model predictions
+plot(mod_distw_clean_quad,
+     se = FALSE,
+     superimpose = FALSE,
+     box = F,
+     main = "Model predictions - Quadratic effects")
+
+#Overlay the bear occurences
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.7,
+     cols = "white",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+
+```
+
+```{r}
+library(mgcv)  # for spline functionality
+
+# Fit a non-linear model using a smooth function of dist_water
+mod_distw_smooth <- ppm(bears_ppp,
+                        ~ s(dist_water),
+                        covariates = list(dist_water = dist_water),
+                        use.gam = TRUE)
+mod_distw_smooth
+```
+
+```{r}
+
+#Plot the model predictions
+plot(mod_distw_smooth,
+     se = FALSE,
+     superimpose = FALSE,
+     box = F,
+     main = "Model predictions - Smooth effects(GAM)")
+
+#Overlay the bear occurences
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.7,
+     cols = "white",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+
+```
+
+```{r}
+# model - Null
+mod_distw_clean_null <- ppm(bears_ppp, ~ 1)
+mod_distw_clean_null
+
+
+```
+
+#### Model evaluation
+
+```{r}
+# Compare models using AIC
+
+# Null model
+cat("AIC value for the null model:",AIC(mod_distw_clean_null))
+
+# Linear model
+cat("\nAIC value for the linear effects model:",AIC(mod_distw_clean))
+
+# Quadratic model
+cat("\nAIC value for the quadratic effects model:",AIC(mod_distw_clean_quad))
+
+# GAM-style Smooth model
+cat("\nAIC value for the GAM Smooth effects model:",AIC(mod_distw_smooth),"\n")
+
+AIC(mod_distw_clean) - AIC(mod_distw_clean_quad)
+```
+
+**Interpretation**
+
+-   Linear model has lowest AIC among the 4 models fitted. Therefore, fitted model with **linear effect of covariate** (`mod_distw_clean`) is the better model
+
+-   However note that the quadratic term was not significant.
+
+```{r}
+options(scipen = 0)
+
+# Likelihood Ratio Test 
+
+# Null model vs Linear effects
+anova(mod_distw_clean_null, mod_distw_clean,  test = "LRT")
+
+# Null model vs Quadratic effects
+anova(mod_distw_clean_null, mod_distw_clean_quad,  test = "LRT")
+
+# Likelihood Ratio Test 
+anova(mod_distw_clean, mod_distw_clean_quad,  test = "LRT")
+```
+
+**Interpretation**
+
+-   This performs a likelihood ratio test under the null hypothesis that the simpler model is sufficient.
+-   The p-value (\< 2.2e-16) is very small (\< 0.05) when comparing the linear and quadratic effects with the null model. However the p-value is 0.4022 (\>0.05) when comparing the linear vs quadratic effects models, therefore, the **linear effects model is best fit**.
+
+```{r}
+# equation for the selected model
+options(scipen = 999) # remove scientific notation
+mod_distw_clean$coef
+
+```
+
+$$
+\lambda_{bears}(u) = e^{-19.36334426884 -0.00005085943.distwater(u)}
+$$
+
+```{r}
+# Test whether the observed data deviate significantly from the model predictions.
+# Run the quadrat test
+quadrat.test(mod_distw_clean, nx = 2, ny = 2)
+```
+
+**Interpretation** - The small p value( \< 2.2e-16) indicates that observed data deviate significantly from the model predictions.
+
+```{r}
+#Calculate the residuals
+res <- residuals(mod_distw_clean)
+
+#Visualise
+plot(res,
+     main = "Model residuals",
+     cols = "transparent"
+     )
+```
+
+```{r}
+#Calculate the residuals
+res <- residuals(mod_distw_clean)
+
+#Visualise
+plot(res,
+     main = "Model residuals"
+     )
+```
+
+```{r}
+mod_res_clean <- residuals(mod_distw_clean, type = "pearson")
+
+mod_res_clean$v[!is.finite(mod_res_clean$v)] <- NA
+
+# Residuals
+plot(mod_res_clean, main = "Model Residual Map (Pearson)", na.col = "transparent")
+```
+
+
+**Interpretation**
+
+-   Since the residual plot shows no obvious patterns in the residuals, we can conclude the model is accurately capturing the trends in the dataset.
+
+```{r}
+#Calculate the partial residuals as a function of distance to water
+par_res_distw <- parres(mod_distw_clean, "dist_water")
+
+plot(par_res_distw,
+     legend = FALSE,
+     lwd = 2,
+     main = "Partial residuals Distance to water - All seasons",
+     ylab = 'Partial Residuals',
+     xlab = "Distance to water")
+```
+
+### Seasonal Distance to Water Effects
+
+```{r}
+options(scipen = 999) # remove scientific notation
+
+# model for each season (individually)
+models_seasonal <- list()
+
+for (season in names(ppp_list)) {
+  models_seasonal[[season]] <- ppm(ppp_list[[season]], ~ dist_water, covariates = list(dist_water))
+  cat("Model for", season, ":\n")
+  print(models_seasonal[[season]])
+}
+```
+
+**Interpretation:**
+
+1.  **Winter**
+
+-   Intercept: significant
+
+-   Slope (dist_water): (p \> 0.05) not significant
+
+-   **Interpretation:**
+
+    -   Bear occurrence does not significantly vary with distance to water. The flat slope suggests distance to water is not an important factor in winter — possibly because bears are less mobile due to hibernation.
+
+2.  **Spring**
+
+-   Intercept: significant
+
+-   Slope (dist_water): -4.26e-05, p ≈ 0.05 (\*)
+
+-   **Interpretation:**
+
+    -   There's weak evidence that bear occurrence decreases with increasing distance from water. Bears may start to rely on water sources as they emerge from hibernation and become active.
+
+3.  **Summer**
+
+-   Intercept: significant
+
+-   Slope (dist_water): p \< 0.05 (\*)
+
+-   **Interpretation:**
+
+    -   Bear occurrence significantly decreases with distance from water.This is ecologically expected, as summer means more activity, foraging, and need for hydration.
+
+4.  **Autumn**
+
+-   Intercept: -20.72 (significant)
+
+-   Slope (dist_water): -1.13e-04, p \< 0.001 (\*\*\*)
+
+-   **Interpretation:**
+
+    -   Bears are strongly associated with areas closer to water.This is the strongest seasonal effect — likely due to pre-hibernation foraging and increased movement and calorie intake near water sources.
+
+#### Model Evaluation
+
+```{r}
+# Calculate partial residuals for each season's model
+partial_residuals_seasonal <- list()
+
+for (season in names(models_seasonal)) {
+  partial_residuals_seasonal[[season]] <- parres(models_seasonal[[season]], covariate = "dist_water")
+}
+```
+
+```{r, fig.width=10, fig.height=5}
+# Plot partial residuals in a 2x2 grid
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 2))  # Larger margins for axes and labels
+
+for (i in seq_along(partial_residuals_seasonal)) {
+  season_name <- names(partial_residuals_seasonal)[i]
+  plot(
+    partial_residuals_seasonal[[i]],
+    main = paste("Partial Residuals Distance to Water\n", season_name),
+    xlab = "Distance to Water",
+    ylab = 'Partial Residuals',
+    legend = F
+  )
+}
+```
+

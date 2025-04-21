@@ -1,0 +1,529 @@
+---
+title: "DATA 589 Project - Mulit-covariate modelling"
+author: "Amali Jayatileke"
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%OS')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cerulean
+  pdf_document:
+    latex_engine: xelatex
+---
+
+# Multi-Covariate Analysis
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+#load packages
+library(sp)
+library(sf)
+library(spatstat)
+library(rgbif)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(tidyverse)
+library(raster)
+library(mgcv)
+```
+
+### Load bears dataset
+
+```{r}
+# # get occurrences from GBIF
+#bc_occ <- occ_search(
+#   scientificName = "Ursus americanus",
+#   country = "CA",
+#   stateProvince = "British Columbia",
+#   limit = 5000
+# )
+ 
+ # omit records with missing coordinates
+#occ_data <- bc_occ$data[!is.na(bc_occ$data$decimalLongitude) & !is.na(bc_occ$data$decimalLatitude), ]
+ 
+# save occurrences
+#save(occ_data, file = "bc_bear_occurrences2.Rda")
+```
+
+```{r}
+# load and view data
+load("bc_bear_occurrences.Rda")
+str(occ_data)
+```
+
+### Load covariates
+
+```{r}
+load("BC_Covariates.Rda")
+summary(DATA)
+```
+
+### Create ppp object
+
+```{r}
+# extract location columns
+bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
+bears_loc_filtered <- subset(bears_loc, year %in% c(2020, 2021, 2022, 2023, 2024))
+#bears_loc_filtered <- subset(bears_loc, year %in% c(2024))
+
+# create sf object
+bears_sf <- st_as_sf(
+  bears_loc_filtered,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326  # WGS84 (longitude/latitude)
+)
+
+# BC Albers projection
+bears_sf_proj <- st_transform(bears_sf, crs = 3005)
+
+# extract x, y coordinates
+coords <- st_coordinates(bears_sf_proj)
+
+# extract BC window
+window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
+window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
+window <- as.owin(window_proj) # convert to owin using sf object
+
+# To avoid plotting points outside window (illegal points)
+# Intersect points with window
+#bears_sf_proj_filtered <- bears_sf_proj[st_within(bears_sf_proj, window_proj, sparse = FALSE), ]
+bears_sf_proj <- subset(bears_sf_proj, st_within(bears_sf_proj, window_proj, sparse = FALSE))
+
+# Re-extract coordinates
+coords_filtered <- st_coordinates(bears_sf_proj)
+
+# Create new ppp object
+bears_ppp <- ppp(
+ x = coords_filtered[, 1],
+ y = coords_filtered[, 2],
+ window = window
+)
+
+#plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020 - 2024")
+
+```
+
+### Create ppp objects for seasons
+
+```{r}
+# Define the seasons and corresponding colors
+seasons <- list(
+  winter = c(12, 1, 2),
+  spring = c(3, 4, 5),
+  summer = c(6, 7, 8),
+  autumn = c(9, 10, 11)
+)
+
+# Create an empty list to store the ppp objects for each season
+ppp_list <- list()
+
+# Create an empty list to store the filtered data for each season
+bears_sf_list <- list()
+
+# Loop over seasons
+for (i in 1:length(seasons)) {
+  
+  # Filter for each season
+  season_name <- names(seasons)[i]
+  season_months <- seasons[[i]]
+  
+  # Filter bears_loc_filtered by the season's months
+  bears_loc_season <- bears_loc_filtered[bears_loc_filtered$month %in% season_months, ]
+  
+  # Print the number of observations for this season
+  cat(season_name, ": ", nrow(bears_loc_season), " observations\n", sep="")
+  
+  # Create sf object for the filtered season
+  bears_sf_season <- st_as_sf(
+    bears_loc_season,
+    coords = c("decimalLongitude", "decimalLatitude"),
+    crs = 4326  # WGS84 (longitude/latitude)
+  )
+  
+  # Transform to BC Albers projection
+  bears_sf_season_proj <- st_transform(bears_sf_season, crs = 3005)
+  
+  # Store sf object in the list
+  bears_sf_list[[season_name]] <- bears_sf_season_proj
+  
+  # Extract x, y coordinates
+  coords <- st_coordinates(bears_sf_season_proj)
+  
+  # Create ppp object for each season
+  suppressWarnings(
+    bears_ppp_season <- ppp(
+      x = coords[, 1],
+      y = coords[, 2],
+      window = window
+    )
+  )
+  
+  # Store ppp object in the list
+  ppp_list[[season_name]] <- bears_ppp_season
+}
+```
+
+
+### EDA
+
+```{r}
+elev <- na.omit(DATA$Elevation)
+cover <- na.omit(DATA$Forest)
+dist_water <- na.omit(DATA$Dist_Water)
+hfi <- na.omit(DATA$HFI)
+
+```
+
+```{r}
+is.im(dist_water)          # should return TRUE
+is.ppp(bears_ppp)          # should return TRUE
+
+```
+
+### Check Collinearity among covariates
+
+```{r}
+# Distance to water for bears locations
+
+# im object to RasterLayer
+im2raster <- function(im_obj) {
+  # iamge to matrix
+  m <- as.matrix(im_obj)
+  # create raster object
+  r <- raster(m)
+  # range and extension
+  ext <- c(im_obj$xrange[1] - im_obj$xstep/2,
+           im_obj$xrange[2] + im_obj$xstep/2,
+           im_obj$yrange[1] - im_obj$ystep/2,
+           im_obj$yrange[2] + im_obj$ystep/2)
+  extent(r) <- ext
+  return(r)
+}
+
+# dist_water to RasterLayer
+distw_raster <- im2raster(dist_water)
+
+# dist_water in bear locations
+bears_sf_proj$distw_value <- raster::extract(distw_raster, bears_sf_proj) #For each bear point, extract the distance to water value from the raster.
+
+summary(bears_sf_proj$distw_value)
+```
+
+```{r}
+elev_raster <- im2raster(elev)
+cover_raster <- im2raster(cover)
+hfi_raster <- im2raster(hfi)
+
+crs(elev_raster) <- CRS("+init=epsg:3005") 
+crs(cover_raster) <- CRS("+init=epsg:3005") 
+crs(hfi_raster) <- CRS("+init=epsg:3005") 
+
+bears_sf_proj$elev_value <- raster::extract(elev_raster, bears_sf_proj)
+bears_sf_proj$cover_value <- raster::extract(cover_raster, bears_sf_proj)
+bears_sf_proj$hfi_value <- raster::extract(hfi_raster, bears_sf_proj)
+
+
+summary(bears_sf_proj$elev_value)
+summary(bears_sf_proj$cover_value)
+summary(bears_sf_proj$hfi_value)
+```
+
+```{r}
+#Check for collinearity
+cov_df <- data.frame(
+  distw = bears_sf_proj$distw_value,
+  elev = bears_sf_proj$elev_value,
+  cover = bears_sf_proj$cover_value,
+  hfi = bears_sf_proj$hfi_value
+)
+# Remove rows with NAs
+cov_df_clean <- na.omit(cov_df)
+
+# Check Correlation Matrix
+cor_matrix <- cor(cov_df_clean)
+print(round(cor_matrix, 2))
+
+```
+
+### Multi-covariate effects
+
+```{r}
+elev <- na.omit(DATA$Elevation)
+cover <- na.omit(DATA$Forest)
+dist_water <- na.omit(DATA$Dist_Water)
+hfi <- na.omit(DATA$HFI)
+
+# Problem:  Values of the covariate ‘hfi’ were NA or undefined at 0.32% (32 out of 9920) of the quadrature points, 
+# when fitting spatial point process models with ppm() in spatstat, missing covariate values at quadrature points will cause errors. Hence convert to raster object
+
+```
+
+```{r}
+
+# hfi to RasterLayer
+hfi_raster <- im2raster(hfi)
+
+hfi_matrix <- as.matrix(hfi)
+media_hfi <- mean(as.vector(hfi_matrix), na.rm = TRUE)
+cat("Mean HFI (without NA):", media_hfi, "\n")
+
+# Impute NA values in HFI using the mean
+hfi_clean <- eval.im( ifelse(is.na(hfi), media_hfi, hfi) )
+
+summary(as.vector(as.matrix(hfi_clean)))
+
+
+# elevation to RasterLayer
+elev_raster <- im2raster(elev)
+
+elev_matrix <- as.matrix(elev)
+media_elev <- mean(as.vector(elev_matrix), na.rm = TRUE)
+cat("Mean Elevation (without NA):", media_elev, "\n")
+
+# Impute NA values in Elevation using the mean
+elev_clean <- eval.im( ifelse(is.na(elev), media_elev, elev) )
+
+summary(as.vector(as.matrix(elev_clean)))
+
+
+```
+
+```{r}
+# model - Null
+mod_distw_clean_null <- ppm(bears_ppp, ~ 1)
+mod_distw_clean_null
+
+
+```
+
+```{r}
+
+# Model 1:  Linear effects of all 4 covariates
+model_all_linear <- ppm(bears_ppp, ~ elev + cover + dist_water + hfi,
+                        covariates = list(elev = elev_clean,
+                                          cover = cover,
+                                          dist_water = dist_water,
+                                          hfi = hfi_clean))
+
+print(summary(model_all_linear))
+```
+
+```{r}
+# Model 2:  Quadratic effects of all 4 covariates
+model_all_quad <- ppm(bears_ppp, ~ elev + I(elev^2) + cover + I(cover^2)
+                      + dist_water + I(dist_water^2) + hfi + I(hfi^2), 
+                      covariates = list(elev = elev_clean,
+                                        cover = cover,
+                                        dist_water = dist_water,
+                                        hfi = hfi_clean))
+
+summary(model_all_quad)
+```
+
+```{r}
+
+# Model 3:  Optimal effects of all 4 covariates from the single-covariate analyses
+# for forest cover the quadatric model was best
+# quadratic for elevation
+# dist_water - linear was best
+# hfi - quadratic was best
+
+model_all_agg1 <- ppm(bears_ppp, ~ elev + I(elev^2) + cover + I(cover^2)
+                      + dist_water + hfi + I(hfi^2), 
+                      covariates = list(elev = elev_clean,
+                                        cover = cover,
+                                        dist_water = dist_water,
+                                        hfi = hfi_clean))
+
+summary(model_all_agg1)
+```
+
+
+```{r}
+
+# Model 4:  Aggregate model with following effects
+# forest cover - quadatric effect
+# elevation - quadratic 
+# dist_water - linear
+# hfi - linear
+
+model_all_agg2 <- ppm(bears_ppp, ~ elev + I(elev^2) + cover + I(cover^2)
+                      + dist_water + hfi, 
+                      covariates = list(elev = elev_clean,
+                                        cover = cover,
+                                        dist_water = dist_water,
+                                        hfi = hfi_clean))
+
+summary(model_all_agg2)
+```
+
+
+#### Model evaluation
+
+```{r}
+# Compare models using AIC
+
+# Null model
+AIC(mod_distw_clean_null)
+
+# Model 1
+AIC(model_all_linear)
+
+# Model 2
+AIC(model_all_quad)
+
+# Model 3
+AIC(model_all_agg1)
+
+# Model 4
+AIC(model_all_agg2)
+
+```
+**Interpretation:**
+
+- Model 2 (All quadratic effects) has lowest AIC. However, this model produces an error indicating the Fisher information matrix is singular, which typically indicates the existence of multicollinearity or linear dependence among your covariates in the model.
+- Therefore we chose next best model (next lowest AIC) which is Model 3 consisting of quadratic effects for Forest cover, Elevation, HFI and linear effects for Distance to Water.
+
+```{r}
+# Plot the log intensity using default plot method, by setting log = TRUE
+plot(model_all_agg1, se = FALSE, log = TRUE, n = 200,box = F, main = "Log-Intensity Prediction")
+
+#Overlay the bear occurences
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.8,
+     cols = "black",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "white",
+     add = TRUE)
+
+```
+
+```{r}
+#Run the quadrat test
+quadrat.test(model_all_agg1, nx = 4, ny = 2)
+
+```
+**Interpretation** - The small p value( \< 2.2e-16) indicates that observed data deviate significantly from the model predictions.
+
+
+```{r}
+#Calculate the partial residuals as a function of elevation
+par_res_elev <- parres(model_all_agg1, "elev")
+
+#Calculate the relative intensity as a function of forest cover
+par_res_forest <- parres(model_all_agg1, "cover")
+
+#Calculate the partial residuals as a function of elevation
+par_res_distw <- parres(model_all_agg1, "dist_water")
+
+#Calculate the relative intensity as a function of forest cover
+par_res_hfi <- parres(model_all_agg1, "hfi")
+
+#Side by side plotting
+par(mfrow = c(2,2))
+par(mar = c(4, 4, 2, 2))
+plot(par_res_elev,
+     legend = FALSE,
+     lwd = 2,
+     main = "Partial residual for elevation",
+     xlab = "Elevation (m)")
+plot(par_res_forest,
+     legend = FALSE,
+     lwd = 2,
+     main = "Partial residual for forest cover",
+     xlab = "Forest cover (%)")
+plot(par_res_distw,
+     legend = FALSE,
+     lwd = 2,
+     main = "Partial residual for distance to water",
+     xlab = "Distance to Water (m)")
+plot(par_res_hfi,
+     legend = FALSE,
+     lwd = 2,
+     main = "Partial residual for HFI",
+     xlab = "HFI")
+```
+
+### Seasonal Multi-covariate effects
+
+```{r}
+options(scipen = 999) # remove scientific notation
+
+# model for each season (individually)
+models_seasonal_overall <- list()
+
+for (season in names(ppp_list)) {
+  models_seasonal_overall[[season]] <- ppm(ppp_list[[season]], ~ elev + I(elev^2) + 
+                                             cover + I(cover^2) + 
+                                             dist_water + hfi + I(hfi^2), 
+                                        covariates = list(elev = elev_clean,
+                                        cover = cover,
+                                        dist_water = dist_water,
+                                        hfi = hfi_clean))
+
+  cat("Model for", season, ":\n")
+  print(models_seasonal_overall[[season]])
+}
+```
+
+**Interpretation**
+
+-   Winter: Model did not converge, potentially due to collinearity or sparse points. Most variables significant, but I(cover\^2) and dist_water are not.
+
+-   Spring/Summer/Autumn: Models converged well. All have a strong positive effect from hfi, and a curvilinear response to elevation and cover.
+
+#### Model Evaluation
+
+```{r}
+
+for (season in names(models_seasonal_overall)) {
+
+  model <- models_seasonal_overall[[season]]
+  #Calculate the partial residuals as a function of elevation
+  par_res_elev <- parres(model, "elev")
+  
+  #Calculate the relative intensity as a function of forest cover
+  par_res_forest <- parres(model, "cover")
+  
+  #Calculate the partial residuals as a function of elevation
+  par_res_distw <- parres(model, "dist_water")
+  
+  #Calculate the relative intensity as a function of forest cover
+  par_res_hfi <- parres(model, "hfi")
+  
+  
+  #Side by side plotting
+  par(mfrow = c(2,2))
+  par(mar = c(4, 4, 2, 2))
+  plot(par_res_elev,
+       legend = FALSE,
+       lwd = 2,
+       main = paste("Partial residual for elevation\n",season),
+       xlab = "Elevation (m)")
+  plot(par_res_forest,
+       legend = FALSE,
+       lwd = 2,
+       main = paste("Partial residual for forest cover\n",season),
+       xlab = "Forest cover (%)")
+  plot(par_res_distw,
+       legend = FALSE,
+       lwd = 2,
+       main = paste("Partial residual for distance to water\n",season),
+       xlab = "Distance to Water (m)")
+  plot(par_res_hfi,
+       legend = FALSE,
+       lwd = 2,
+       main = paste("Partial residual for HFI\n", season),
+       xlab = "HFI")
+ 
+}
+```
