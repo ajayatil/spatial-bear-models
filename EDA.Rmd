@@ -1,0 +1,176 @@
+---
+title: "Ursus Americanus - Exploratory Data Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+#load packages
+library(sp)
+library(sf)
+library(spatstat)
+library(rgbif)
+library(ggplot2)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(tidyverse)
+```
+
+### Load and inspect data
+
+```{r}
+# bear occurrences from GBIF
+load("bc_bear_occurrences.Rda")
+<<<<<<< HEAD:project.Rmd
+#str(occ_data)
+#sapply(occ_data, class)
+```
+=======
+str(occ_data)
+>>>>>>> 659596e13d865736898a6c25211c6297f147a576:EDA.Rmd
+
+# BC covariate data
+load("BC_Covariates.Rda")
+summary(DATA)
+```
+
+### Visualize bear occurrences in BC
+
+```{r}
+# extract location columns
+bears_loc <- occ_data[, c("decimalLongitude", "decimalLatitude", "month", "year")]
+bears_loc_filtered <- subset(bears_loc, year %in% c(2020, 2021, 2022, 2023, 2024))
+
+# create sf object
+bears_sf <- st_as_sf(
+  bears_loc_filtered,
+  coords = c("decimalLongitude", "decimalLatitude"),
+  crs = 4326  # WGS84 (longitude/latitude)
+)
+
+# BC Albers projection
+bears_sf_proj <- st_transform(bears_sf, crs = 3005)
+
+# extract BC window
+window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
+window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
+window <- as.owin(window_proj) # convert to owin using sf object
+
+# To avoid plotting points outside window (illegal points)
+# Intersect points with window
+bears_sf_proj <- subset(bears_sf_proj, st_within(bears_sf_proj, window_proj, sparse = FALSE))
+
+# extract x, y coordinates
+coords <- st_coordinates(bears_sf_proj)
+
+# create ppp object
+bears_ppp <- ppp(
+  x = coords[,1],
+  y = coords[,2],
+  window = window
+)
+
+plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020-2024")
+```
+Bear occurrences appear to be non-random, with clusters of high occurrence intensity found across the province. Intensity generally increases from North to South, with a particularly high concentration of observations in Southern Vancouver Island, suggesting localized hotspots of bear activity.
+
+### Compare seasonal distributions (2020-2024)
+
+```{r}
+# Define the seasons by month number
+seasons <- list(
+  winter = c(12, 1, 2),
+  spring = c(3, 4, 5),
+  summer = c(6, 7, 8),
+  autumn = c(9, 10, 11)
+)
+
+# Create an empty list to store the ppp objects for each season
+ppp_list <- list()
+
+# Create an empty list to store the filtered data for each season
+bears_sf_list <- list()
+
+# Loop over seasons
+for (i in 1:length(seasons)) {
+  
+  # Filter for each season
+  season_name <- names(seasons)[i]
+  season_months <- seasons[[i]]
+  
+  # Filter bears_loc_filtered by the season's months
+  bears_loc_season <- bears_loc_filtered[bears_loc_filtered$month %in% season_months, ]
+  
+  # Print the number of observations for this season
+  cat(season_name, ": ", nrow(bears_loc_season), " observations\n", sep="")
+  
+  # Create sf object for the filtered season
+  bears_sf_season <- st_as_sf(
+    bears_loc_season,
+    coords = c("decimalLongitude", "decimalLatitude"),
+    crs = 4326  # WGS84 (longitude/latitude)
+  )
+  
+  # Transform to BC Albers projection
+  bears_sf_season_proj <- st_transform(bears_sf_season, crs = 3005)
+  
+  # Store sf object in the list
+  bears_sf_list[[season_name]] <- bears_sf_season_proj
+  
+  # Extract x, y coordinates
+  coords <- st_coordinates(bears_sf_season_proj)
+  
+  # Create ppp object for each season
+  suppressWarnings(
+    bears_ppp_season <- ppp(
+      x = coords[, 1],
+      y = coords[, 2],
+      window = window
+    )
+  )
+  
+  # Store ppp object in the list
+  ppp_list[[season_name]] <- bears_ppp_season
+}
+```
+```{r}
+# Plot the four maps in a 2x2 grid
+par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
+
+# Loop over ppp objects and plot them
+for (i in 1:length(ppp_list)) {
+  season_name <- names(ppp_list)[i]
+  suppressWarnings(
+    plot(ppp_list[[season_name]], main = season_name, pch = 21)
+  )
+}
+```
+The occurrence patterns of bears seem to differ by season, mostly in terms of number of occurrences. Summer months have the most bear occurrences, followed by Autumn and Spring which are comparable, and Winter having very few occurrences, likely due to hibernation.
+
+### KDE for each season
+
+```{r}
+# KDE comparison
+dens_list <- lapply(ppp_list, function(p) density(p, sigma = 10000))
+for (s in names(dens_list)) {
+  plot(dens_list[[s]], main = paste("KDE Surface -", s))
+}
+```
+
+### Performing Quadrat test for each season
+
+Dividing area into a grid of 5x5 and testing for deviations from a random distribution.
+
+```{r}
+# quadrat tests
+for (s in names(ppp_list)) {
+  qt <- quadrat.test(ppp_list[[s]], nx = 5, ny = 5) 
+  print(qt)
+  plot(qt, main = paste("Quadrat test -", s))
+}
+```
+
+Based on the results of the quadrat test, bear locations do not follow a random distribution and show spatial clustering across all seasons, meaning their presence is likely influenced by specific environmental or ecological factors that are season-dependent. The quadrat test results suggest that for all seasons (winter, spring, summer, and autumn), bear locations exhibit significant spatial clustering or non-random patterns rather than being randomly distributed (as indicated by the very small p-values).
