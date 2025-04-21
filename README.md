@@ -60,19 +60,19 @@ We would like to acknowledge the contributions from various sources:
 
 <a href="https://github.com/VidalTinoco" target="_blank">
   <img src="https://github.com/VidalTinoco.png?size=40" width="20" height="20" alt="@VidalTinoco" />
-</a> **@VidalTinoco**  
+</a> @VidalTinoco  
 
 <a href="https://github.com/kstrachan556" target="_blank">
   <img src="https://github.com/kstrachan556.png?size=40" width="20" height="20" alt="@kstrachan556" />
-</a> **@kstrachan556**  
+</a> @kstrachan556  
 
 <a href="https://github.com/j232shen" target="_blank">
   <img src="https://github.com/j232shen.png?size=40" width="20" height="20" alt="@j232shen" />
-</a> **@j232shen**  
+</a> @j232shen  
 
 <a href="https://github.com/ajayatil" target="_blank">
   <img src="https://github.com/ajayatil.png?size=40" width="20" height="20" alt="@ajayatil" />
-</a> **@ajayatil**  
+</a> @ajayatil 
 
 ## License
 This project is licensed under the MIT License.
