@@ -5,6 +5,8 @@ date: "2025-04-16"
 output: html_document
 ---
 
+#### Prepares libraries and data
+
 ```{r setup, include=FALSE}
 # Loads packages
 library(sp)
@@ -20,12 +22,32 @@ library(mgcv)
 ```
 
 ```{r}
+# Gets occurrences from GBIF
+#bc_occ <- occ_search(
+#   scientificName = "Ursus americanus",
+#   country = "CA",
+#   stateProvince = "British Columbia",
+#   limit = 5000
+# )
+ 
+# Omits records with missing coordinates
+#occ_data <- bc_occ$data[!is.na(bc_occ$data$decimalLongitude) & !is.na(bc_occ$data$decimalLatitude), ]
+ 
+# Saves occurrences
+#save(occ_data, file = "bc_bear_occurrences.Rda")
+```
+
+
+```{r}
 # Loads data
 load("bc_bear_occurrences.Rda")
 load("BC_Covariates.Rda")
 ``` 
 
-#### Visualizes bear occurrences in BC
+
+#### EDA - output removed below as can be found within EDA files
+
+#### Visualizes Ursus Americanus occurrences in BC
 
 ```{r}
 # Extracts location columns
@@ -128,7 +150,7 @@ hfi <- DATA$HFI
 ```
 
 
-#### Estimates the intensity of bear occurrences based on elevation
+#### Estimates the intensity of occurrences based on elevation covariate
 
 ```{r}
 # Intensity as a function of elevation overall
@@ -137,6 +159,13 @@ plot(rho,
      xlim=c(0, max(elev)), 
      main="Estimated Rho vs. Elevation")
 ```  
+
+- Based on the `rho` plot, we see two prominent peaks. There is a peak observed at very low elevations and another peak observed at ~2750-3000m. This suggests that bear sightings are more frequent in these elevation ranges within the study area.
+
+- We see that the confidence interval is wider in the regions with fewer actual sightings, as supported by the rug plot ticks. The density is higher than average at very low elevations and ~2750-3000m, while it is generally below average in the mid-elevation ranges. 
+
+- Based on tick marks, we see a high concentration of sightings at very low elevations and another noticeable cluster around the 2750-3000m elevation mark, which aligns with the peaks in the estimated density curve. There are fewer sightings in the mid-elevation ranges.
+
 
 ```{r}
 # Intensity as a function of elevation broken up by seasons
@@ -150,6 +179,16 @@ for (i in 1:length(ppp_list)) {
        main = paste(season_name))
 }
 ```  
+
+
+- Winter: The estimated density of bear sightings is very low across all elevations, but there is a small peak in estimated density at very low elevations. The rug plot ticks show very few sightings recorded during winter, but these sightings are mostly concentrated at lower elevations. This supports that bears are generally less active and sighted less frequently during winter, likely due to hibernation, and any sightings that do occur tend to be at lower elevations.
+
+- Spring: The estimated density begins to increase compared to winter, particularly at lower elevations.
+There is a noticeable peak in estimated density at very low elevations. The rug plot ticks show an increase in sightings compared to winter, again concentrated at lower elevations. This may indicate that as the temperatures increase, bears may be becoming more active and are sighted more frequently. This is seen especially at lower elevations, possibly as they emerge from hibernation and search for food.
+
+- Summer: The overall density of bear sightings is higher in summer compared to winter and spring. There is a prominent peak in estimated density at very low elevations. A second, broader peak appears at higher elevations (around 2750-3000m). The rug plot ticks show a larger number of sightings across a wider range of elevations, with concentrations at both low and high elevations. This suggests that bears are most active and widespread during the summer months, appearing in both lower and higher elevation habitats.
+
+- Autumn: The estimated density shows a pattern somewhat in-between summer and spring. There is a noticeable peak at very low elevations. The rug plot ticks show a reasonable number of sightings, with concentrations at both low and high elevations, although slightly fewer at the highest elevations compared to summer. Bears may be actively foraging for the upcoming winter utilizing both lower and higher elevation food sources.
 
 
 ```{r}
@@ -176,7 +215,8 @@ summary(bears_sf_proj$elev_value)
 
 
 
-KDE to estimate the concentration of bear occurrences based on elevation values. The elevation data for bear locations ranges from a minimum of 11.68m to a maximum of 2308.18m, with most occurrences concentrated between 461.09m and 937.91m.  The mean elevation is 754.84m, slightly higher than the median, indicating a skew towards higher elevations.
+KDE estimates the concentration of bear occurrences based on elevation values. The elevation data for bear locations ranges from a minimum of 11.68m to a maximum of 2308.18m, with most occurrences concentrated between 461.09m and 937.91m.  The mean elevation is 754.84m, slightly higher than the median, indicating a skew towards higher elevations.
+
 
 ```{r}
 # KDE for bear locations
@@ -224,7 +264,8 @@ plot(bears_ppp,
 
 
 
-Fitted model: Intercept: -17.37; Elevation coefficient: -0.0025. The negative coefficient for elevation indicates that, as elevation increases, the expected intensity  of bear occurrences decreases. This suggests that bears are less likely to be found at higher elevations.
+- Fitted model: Intercept: -17.37; Elevation coefficient: -0.0025. 
+- The negative coefficient for elevation indicates that, as elevation increases, the expected intensity  of bear occurrences decreases. This suggests that bears are less likely to be found at higher elevations.
 
 
 
@@ -262,6 +303,18 @@ plot(par_res_elev_all,
      xlab = "Elevation (m)",
      ylab = "Partial Residuals")
 ```
+
+Based on partial residuals plot above, we see the following:
+
+- Non-linear relationship: The black line deviates significantly from the blue dashed line, indicating that the relationship between elevation and bear sightings is likely non-linear. A linear term for elevation in the model may not adequately capture effect.
+
+- Relatively flat effect at lower-mid elevations: Between approximately 0-2500m, the black line is relatively flat and close to zero. This suggests that, after accounting for other predictors, changes in elevation within this range do not have a strong or consistent positive or negative effect on bear sightings.
+
+- A strong positive effect is seen at high elevations: Above ~2500m, the black line shows a sharp increase. This indicates that higher elevations are strongly associated with higher values of bear sightings. The confidence interval widens at these higher elevations, suggesting more variability or fewer data points.
+
+- Initial slight negative trend: At very low elevations (<50m), there appears to be a slight downward trend in the partial residuals, suggesting a potentially weak negative association with bear sightings.
+
+
 ```{r}
 models_elev_seasonal <- list()
 
@@ -284,6 +337,16 @@ for (season in names(models_elev_seasonal)) {
        ylab = "Partial Residuals")
 }
 ```
+
+Based on the partial residual plots separated by season above, we see the following: 
+
+- Winter: The black line shows a negative trend in partial residuals as elevation increases. This suggests that during winter, higher elevations are associated with fewer bear sightings. The blue dashed line also shows a negative slope, however, the black curve doesn't deviate too far from this line. This suggests a relatively linear negative relationship within the observed elevation range for winter. The confidence interval appears to widen at higher elevations, which indicates greater uncertainty in the effect of elevation during winter at these ranges.
+
+- Spring: The black line shows a negative trend with increasing elevation, although the slope appears slightly less extreme. This may indicate that, in spring, higher elevations are also associated with fewer bear sightings. The black curve also does not deviate too far from the blue dashed line, suggesting a somewhat linear negative relationship. The confidence interval also widens at higher elevations, which indicates more uncertainty.
+
+- Summer: At lower-mid elevations (~0-2000m), the partial residuals are relatively flat, suggesting that elevation has little effect on bear sightings. There is a sharp positive peak at higher elevations (~2500-3000m). This indicates that during summer very high elevations are associated with significantly higher occurrences of bear sightings. The confidence interval widens at these high elevations, reflecting the strong but potentially less certain effects.
+
+- Autumn: The black curve shows slight non-linearity, with a dip in the mid-elevation range before continuing a negative trend. The confidence interval widens at higher elevations. This suggests that in autumn, higher elevations are generally associated with fewer bear sightings, although the relationship is more complex than linear.
 
 
 ```{r}
@@ -309,13 +372,17 @@ bears_all_elevation$count <- 1
 
 
 
-Winter: Intercept: -20.28; Elevation Coefficient: -0.0049. For winter, the negative coefficient for elevation indicates that bear occurrences decrease as elevation increases. The model did not converge, so caution is needed in interpreting the results.
+- Winter: Intercept: -20.28; Elevation Coefficient: -0.0049
+  - For winter, the negative coefficient for elevation indicates that bear occurrences decrease as elevation increases. The model did not converge, so caution is needed in interpreting the results.
 
-Spring: Intercept: -18.94; Elevation Coefficient: -0.0024. In spring, the relationship between elevation and bear occurrences is also negative, with a slight decrease in occurrences as elevation increases. However, the model showed some issues with convergence.
+- Spring: Intercept: -18.94; Elevation Coefficient: -0.0024
+  - In spring, the relationship between elevation and bear occurrences is also negative, with a slight decrease in occurrences as elevation increases. However, the model showed some issues with convergence.
 
-Summer: Intercept: -18.21; Elevation Coefficient: -0.0022. Summer shows a similar negative relationship, with bear occurrences decreasing slightly as elevation increases.
+- Summer: Intercept: -18.21; Elevation Coefficient: -0.0022 
+  - Summer shows a similar negative relationship, with bear occurrences decreasing slightly as elevation increases.
 
-Autumn: Intercept: -18.51; Elevation Coefficient: -0.0031. In autumn, bear occurrences also decrease with elevation, with a slightly stronger negative coefficient compared to spring and summer.
+- Autumn: Intercept: -18.51; Elevation Coefficient: -0.0031
+  - In autumn, bear occurrences also decrease with elevation, with a slightly stronger negative coefficient compared to spring and summer.
 
 All seasons show a negative relationship between bear occurrences and elevation. Winter has the largest negative coefficient (-0.0049), meaning a stronger decrease in occurrences with elevation.
 
@@ -448,13 +515,13 @@ for (s in names(ppp_list)) {
 
 Across all four seasons, the Ripley's K function plots show a pattern of clustering. This can be concluded as the estimated K functions (`iso`, `trans`, `bord`) are generally significantly above the expected K function under complete spatial randomness and they often lie outside the simulation envelope.
 
-Winter: Clustering may reflect limited movement due to snow, or congregation around scarce food sources during milder periods. It could also be indirectly related to dens.
+- Winter: Clustering may reflect limited movement due to snow, or congregation around scarce food sources during milder periods. It could also be indirectly related to dens.
 
-Spring: Clustering could indicate post-hibernation dispersal patterns, concentration around newly available food sources, habitat preferences, or potential attraction to human-related food.
+- Spring: Clustering could indicate post-hibernation dispersal patterns, concentration around newly available food sources, habitat preferences, or potential attraction to human-related food.
 
-Summer: Clustering may reflect the distribution of abundant food resources, proximity to water sources, preferred habitats, and ongoing attraction to human-related food during peak bear activity.
+- Summer: Clustering may reflect the distribution of abundant food resources, proximity to water sources, preferred habitats, and ongoing attraction to human-related food during peak bear activity.
 
-Autumn: Clustering could reflect bears concentrating on late-season food sources for hibernation, movements related to finding den sites, and continued attraction to human-related food as natural food availability changes.
+- Autumn: Clustering could reflect bears concentrating on late-season food sources for hibernation, movements related to finding den sites, and continued attraction to human-related food as natural food availability changes.
 
 
 
