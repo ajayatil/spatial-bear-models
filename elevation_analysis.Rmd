@@ -474,38 +474,21 @@ for (s in names(ppp_list)) {
 ```
 
 
-
-#### Fits a multivariate Poisson Point Process model to bear occurrences for each season, considering all covariates: elevation, forest cover, hfi, and distance to water. Predicts intensity and plots for each season.
-
-```{r}
-# Multivariate ppm
-for (s in names(ppp_list)) {
-  model <- ppm(ppp_list[[s]] ~ elev + cover + hfi + dist_water,
-               covariates = list(elev = elevation, cover = cover, hfi = hfi, dist_water = dist_water))
-  plot(predict(model), 
-       main = paste("Predicted Intensity -", s))
-}
-```
-
 For each season - assessing spatial distribution of bear occurrences (I.e., clustered, dispersed, or randomly distributed)
 
 
-
-#### Ripley's K
-
 ```{r}
-# Ripley's K with Envelope for each season
 for (s in names(ppp_list)) {
-  K <- Kest(ppp_list[[s]])
+  K <- Kinhom(ppp_list[[s]])
   E <- envelope(ppp_list[[s]], 
-                Kest, 
+                Kinhom, 
                 correction = "border", 
                 rank = 1, 
                 nsim = 19, 
                 fix.n = TRUE)
   
   plot(K, 
-       main = paste("Ripley's K -", s))
+       main = paste(s))
   plot(E, 
        add = TRUE,
        lty = 2)  
@@ -513,7 +496,7 @@ for (s in names(ppp_list)) {
 ```
 
 
-Across all four seasons, the Ripley's K function plots show a pattern of clustering. This can be concluded as the estimated K functions (`iso`, `trans`, `bord`) are generally significantly above the expected K function under complete spatial randomness and they often lie outside the simulation envelope.
+Across all four seasons, the plots show a pattern of clustering. 
 
 - Winter: Clustering may reflect limited movement due to snow, or congregation around scarce food sources during milder periods. It could also be indirectly related to dens.
 
