@@ -56,5 +56,13 @@ We would like to acknowledge the contributions from various sources:
 - `R` Community: For providing open-source packages that were essential for the analysis and visualization in this project.
 - Global Biodiversity Information Facility (GBIF): For offering valuable species occurrence data, which enabled analysis on Ursus americanus.
 
+### Contributors  
+
+## Contributors
+- [![Vidal Tinoco](https://github.com/VidalTinoco.png?size=40)](https://github.com/VidalTinoco) — @VidalTinoco  
+- [![Kelsey Strachan](https://github.com/kstrachan556.png?size=40)](https://github.com/kstrachan556) — @kstrachan556
+- [![Jane Shen](https://github.com/j232shen.png?size=40)](https://github.com/j232shen) — @j232shen
+- [![Amali Jayatileke](https://github.com/ajayatil.png?size=40)](https://github.com/ajayatil) — @ajayatil  
+
 ## License
 This project is licensed under the MIT License.
