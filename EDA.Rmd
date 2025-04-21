@@ -16,6 +16,7 @@ library(rgbif)
 library(ggplot2)
 library(rnaturalearth)
 library(rnaturalearthdata)
+library(tidyverse)
 ```
 
 ### Load and inspect data
@@ -23,7 +24,13 @@ library(rnaturalearthdata)
 ```{r}
 # bear occurrences from GBIF
 load("bc_bear_occurrences.Rda")
+<<<<<<< HEAD:project.Rmd
+#str(occ_data)
+#sapply(occ_data, class)
+```
+=======
 str(occ_data)
+>>>>>>> 659596e13d865736898a6c25211c6297f147a576:EDA.Rmd
 
 # BC covariate data
 load("BC_Covariates.Rda")
