@@ -1,5 +1,5 @@
 ---
-title: "Project - Single covariate and mulit-covariate modelling"
+title: "DATA 589 Project - Single covariate modelling - Distance to Water"
 author: "Amali Jayatileke"
 date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%OS')`"
 output:
@@ -13,6 +13,8 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+# Single Covariate Analysis for 'Distance to Water'
 
 ```{r, include=FALSE}
 #load packages
@@ -59,7 +61,7 @@ load("BC_Covariates.Rda")
 summary(DATA)
 ```
 
-### Visualize bear occurrences in BC
+### Create ppp object
 
 ```{r}
 # extract location columns
@@ -84,23 +86,8 @@ coords <- st_coordinates(bears_sf_proj)
 window_sf <- st_as_sf(DATA$Window) # convert SpatialPolygons to Simple Features (sf)
 window_proj <- st_transform(window_sf, crs = 3005) # ensure same CRS
 window <- as.owin(window_proj) # convert to owin using sf object
-```
 
-```{r}
-# create ppp object
-#bears_ppp <- ppp(
-#   x = coords[,1],
-#   y = coords[,2],
-#  window = window
-#)
-
-#plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020 - 2024")
-
-```
-
-```{r}
 # To avoid plotting points outside window (illegal points)
-
 # Intersect points with window
 #bears_sf_proj_filtered <- bears_sf_proj[st_within(bears_sf_proj, window_proj, sparse = FALSE), ]
 bears_sf_proj <- subset(bears_sf_proj, st_within(bears_sf_proj, window_proj, sparse = FALSE))
@@ -115,11 +102,11 @@ bears_ppp <- ppp(
  window = window
 )
 
-plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020 - 2024")
+#plot(bears_ppp, pch = 21, main = "Black bear occurrences in BC, 2020 - 2024")
 
 ```
 
-### Compare seasonal distributions
+### Create ppp objects for seasons
 
 ```{r}
 # Define the seasons and corresponding colors
@@ -179,51 +166,6 @@ for (i in 1:length(seasons)) {
 }
 ```
 
-```{r}
-# Plot the four maps in a 2x2 grid
-par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
-
-# Loop over ppp objects and plot them
-for (i in 1:length(ppp_list)) {
-  season_name <- names(ppp_list)[i]
-  suppressWarnings(
-    plot(ppp_list[[season_name]], main = paste(season_name, "(2020 - 2024)"), pch = 21)
-  )
-}
-```
-
-### Looking at covariates
-
-```{r}
-par(mfrow=c(2,2), mar=c(1,1,1,1))  # Set up a 2x2 plotting window
-plot(DATA$Elevation,box = F, main = "Elevation")
-plot(DATA$Forest,box = F, main = "Forest Cover")
-plot(DATA$HFI,box = F, main = "HFI (Human Footprint Index)")
-plot(DATA$Dist_Water, box = F, main = "Distance to Water")
-
-
-
-```
-
-### Assumptions
-
-#### Quadrat test (5x5) conducted for each season to assess whether bear locations follow a random (CSR) distribution
-
-```{r}
-options(scipen = 0)
-
-# Loop over ppp objects and conduct quadrat test of homogeneity
-for (i in seq_along(ppp_list)) {
-  season_name <- names(ppp_list)[i]
-  
-  # Perform quadrat test directly on ppp object
-  qt_result <- quadrat.test(ppp_list[[i]], nx = 5, ny = 5)
-  
-  cat("\n--- Quadrat Test for", season_name, "---\n")
-  print(qt_result)
-}
-
-```
 
 ### EDA
 
@@ -241,7 +183,7 @@ is.ppp(bears_ppp)          # should return TRUE
 
 ```
 
-#### rhohat plots
+#### Intensity plots
 
 ```{r, cache = TRUE}
 # Overall
@@ -263,17 +205,17 @@ plot(rho, xlim=c(0, max(dist_water)), main = "Estimated rho vs Distance to Water
 
 -   **Multiple Peaks at Mid-Range Distances**
 
-  -   There are small **bumps at \~3000, \~8000, and \~13000 meters**. These could indicate:
-        
-  -   Presence of **habitat patches** or **water-proximate features** that bears favor.
+    -   There are small **bumps at \~3000, \~8000, and \~13000 meters**. These could indicate:
 
-  -   **Random placement** of some bear points that just happen to cluster around a certain distance (e.g., \~10,000m from water) purely by chance.
+    -   Presence of **habitat patches** or **water-proximate features** that bears favor.
 
-  -   **Noise** or **measurement errors**
+    -   **Random placement** of some bear points that just happen to cluster around a certain distance (e.g., \~10,000m from water) purely by chance.
 
-  -   Small sample size, bumps after 5000 m have larger confidence bands indicating high uncertainty due to smaller number of data point.
+    -   **Noise** or **measurement errors**
 
-  -   Possibly transitional areas like wetlands or secondary water sources.
+    -   Small sample size, bumps after 5000 m have larger confidence bands indicating high uncertainty due to smaller number of data point.
+
+    -   Possibly transitional areas like wetlands or secondary water sources.
 
 -   **Wide Confidence Band Beyond \~15000m**
 
@@ -283,7 +225,7 @@ plot(rho, xlim=c(0, max(dist_water)), main = "Estimated rho vs Distance to Water
 
 -   **Conclusion** Bear occurrences are strongly concentrated near water. There is a clear negative relationship between bear intensity and distance to water: the farther from water, the less likely a bear is to be found. This supports the ecological hypothesis that proximity to water is a key driver of black bear spatial distribution in BC.
 
-```{r, cache = TRUE, fig.width = 10, fig.height = 8}
+```{r, cache = TRUE, fig.width = 10, fig.height = 5}
 par(mfrow = c(2,2), mar = c(4, 4, 3, 2))
 for (i in 1:length(ppp_list)) {
   season_name <- names(ppp_list)[i]
@@ -295,15 +237,63 @@ for (i in 1:length(ppp_list)) {
 
 ```
 
+**Interpretation**
+
+1.  Winter
+
+-   Moderate positive intensity at 3,000–8,000m, peaking slightly around 7,000–8,000m.
+
+-   Confidence bands widen after \~8,000m, suggesting fewer observations.
+
+-   Little to no bear activity at farther distances (\>15,000m).
+
+**Interpretation:** Bears may be located in moderately water-proximate areas during winter, possibly due to denning or reduced mobility.
+
+2.  Spring
+
+-   Sharp initial rise, fluctuating but generally high intensity between 0–10,000m.
+
+-   Peaks between 2,000–5,000m and 8,000–10,000m.
+
+-   Wider confidence intervals suggest less certainty in the far range.
+
+**Interpretation:**Spring shows stronger proximity preference to water, likely due to post-hibernation activity, foraging, or mating behavior.
+
+3.  Summer
+
+-   Very strong intensity peaks near 7,000m and 12,000–14,000m.
+
+-   Complex structure—multiple peaks and valleys.
+
+-   Wider confidence intervals indicate heterogeneity in behavior or data sparsity.
+
+**Interpretation:** Summer suggests localized hotspots of bear activity, possibly reflecting feeding grounds or specific habitat zones near water.
+
+4.  Autumn
+
+-   Overall high intensity near 2,000–6,000m, then multiple sharp peaks at 9,000–14,000m.
+
+-   Some intensity estimates exceed the mean line, indicating strong preference in those zones.
+
+**Interpretation:** Bears may be preparing for hibernation and seeking resources—like streams or food patches near water—resulting in varied but elevated usage across mid-range distances.
+
+**Key Takeaways:**
+
+-   Bears show non-linear, seasonal-specific relationships with distance to water.
+
+-   There's no consistent monotonic trend; instead, multiple peaks suggest preferred zones or habitat patchiness.
+
+-   Confidence bands widen beyond \~10–12 km, so interpretation is less reliable at far distances.
+
 ```{r, cache = TRUE}
 # Seasonal 
 # intensity as a function of distance from water
-par(mfrow=c(2,2), mar=c(2,2,2,2))
-for (i in 1:length(ppp_list)) {
-  season_name <- names(ppp_list)[i]
-  rho <- rhohat(ppp_list[[season_name]], dist_water) 
-  plot(rho, xlim=c(0, max(dist_water)), main = paste(season_name))
-}
+#par(mfrow=c(2,2), mar=c(2,2,2,2))
+#for (i in 1:length(ppp_list)) {
+#  season_name <- names(ppp_list)[i]
+#  rho <- rhohat(ppp_list[[season_name]], dist_water) 
+#  plot(rho, xlim=c(0, max(dist_water)), main = paste(season_name))
+#}
 ```
 
 ```{r}
@@ -328,12 +318,10 @@ im2raster <- function(im_obj) {
 distw_raster <- im2raster(dist_water)
 
 # dist_water in bear locations
-bears_sf_proj$distw_value <- extract(distw_raster, bears_sf_proj) #For each bear point, extract the distance to water value from the raster.
+bears_sf_proj$distw_value <- raster::extract(distw_raster, bears_sf_proj) #For each bear point, extract the distance to water value from the raster.
 
 summary(bears_sf_proj$distw_value)
 ```
-
-**Interpretation:**
 
 ```{r}
 hist(bears_sf_proj$distw_value, 
@@ -371,7 +359,7 @@ plot(mod_distw_clean,
      box = F,
      main = "Model predictions - Linear effects")
 
-#Overlay the park locations
+#Overlay the bear occurences
 plot(bears_ppp,
      pch = 16,
      cex = 0.7,
@@ -402,7 +390,41 @@ plot(mod_distw_clean_quad,
      box = F,
      main = "Model predictions - Quadratic effects")
 
-#Overlay the park locations
+#Overlay the bear occurences
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.7,
+     cols = "white",
+     add = TRUE)
+plot(bears_ppp,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+
+```
+
+```{r}
+library(mgcv)  # for spline functionality
+
+# Fit a non-linear model using a smooth function of dist_water
+mod_distw_smooth <- ppm(bears_ppp,
+                        ~ s(dist_water),
+                        covariates = list(dist_water = dist_water),
+                        use.gam = TRUE)
+mod_distw_smooth
+```
+
+```{r}
+
+#Plot the model predictions
+plot(mod_distw_smooth,
+     se = FALSE,
+     superimpose = FALSE,
+     box = F,
+     main = "Model predictions - Smooth effects(GAM)")
+
+#Overlay the bear occurences
 plot(bears_ppp,
      pch = 16,
      cex = 0.7,
@@ -433,17 +455,20 @@ mod_distw_clean_null
 cat("AIC value for the null model:",AIC(mod_distw_clean_null))
 
 # Linear model
-cat("AIC value for the linear effects model:",AIC(mod_distw_clean))
+cat("\nAIC value for the linear effects model:",AIC(mod_distw_clean))
 
 # Quadratic model
-cat("AIC value for the quadratic effects model:",AIC(mod_distw_clean_quad))
+cat("\nAIC value for the quadratic effects model:",AIC(mod_distw_clean_quad))
+
+# GAM-style Smooth model
+cat("\nAIC value for the GAM Smooth effects model:",AIC(mod_distw_smooth),"\n")
 
 AIC(mod_distw_clean) - AIC(mod_distw_clean_quad)
 ```
 
 **Interpretation**
 
--   Quadratic model has lowest AIC than null model. Therefore, fitted model with quadratic term of covariates (fit) is the better model
+-   Linear model has lowest AIC among the 4 models fitted. Therefore, fitted model with **linear effect of covariate** (`mod_distw_clean`) is the better model
 
 -   However note that the quadratic term was not significant.
 
@@ -516,6 +541,7 @@ mod_res_clean$v[!is.finite(mod_res_clean$v)] <- NA
 plot(mod_res_clean, main = "Model Residual Map (Pearson)", na.col = "transparent")
 ```
 
+
 **Interpretation**
 
 -   Since the residual plot shows no obvious patterns in the residuals, we can conclude the model is accurately capturing the trends in the dataset.
@@ -527,8 +553,9 @@ par_res_distw <- parres(mod_distw_clean, "dist_water")
 plot(par_res_distw,
      legend = FALSE,
      lwd = 2,
-     main = "Partial residual for distance to water",
-     xlab = "Distance to water (m)")
+     main = "Partial residuals Distance to water - All seasons",
+     ylab = 'Partial Residuals',
+     xlab = "Distance to water")
 ```
 
 ### Seasonal Distance to Water Effects
@@ -597,315 +624,21 @@ partial_residuals_seasonal <- list()
 for (season in names(models_seasonal)) {
   partial_residuals_seasonal[[season]] <- parres(models_seasonal[[season]], covariate = "dist_water")
 }
+```
 
+```{r, fig.width=10, fig.height=5}
 # Plot partial residuals in a 2x2 grid
-par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))  # Larger margins for axes and labels
+par(mfrow = c(2, 2), mar = c(4, 4, 2, 2))  # Larger margins for axes and labels
 
 for (i in seq_along(partial_residuals_seasonal)) {
   season_name <- names(partial_residuals_seasonal)[i]
   plot(
     partial_residuals_seasonal[[i]],
-    main = paste("Partial Residuals -", season_name),
+    main = paste("Partial Residuals Distance to Water\n", season_name),
     xlab = "Distance to Water",
+    ylab = 'Partial Residuals',
     legend = F
   )
 }
 ```
 
-### Check Collinearity among covariates
-
-```{r}
-elev_raster <- im2raster(elev)
-cover_raster <- im2raster(cover)
-hfi_raster <- im2raster(hfi)
-
-crs(elev_raster) <- CRS("+init=epsg:3005") 
-crs(cover_raster) <- CRS("+init=epsg:3005") 
-crs(hfi_raster) <- CRS("+init=epsg:3005") 
-
-bears_sf_proj$elev_value <- extract(elev_raster, bears_sf_proj)
-bears_sf_proj$cover_value <- extract(cover_raster, bears_sf_proj)
-bears_sf_proj$hfi_value <- extract(hfi_raster, bears_sf_proj)
-
-
-summary(bears_sf_proj$elev_value)
-summary(bears_sf_proj$cover_value)
-summary(bears_sf_proj$hfi_value)
-```
-
-```{r}
-#Check for collinearity
-cov_df <- data.frame(
-  distw = bears_sf_proj$distw_value,
-  elev = bears_sf_proj$elev_value,
-  cover = bears_sf_proj$cover_value,
-  hfi = bears_sf_proj$hfi_value
-)
-# Remove rows with NAs
-cov_df_clean <- na.omit(cov_df)
-
-# Check Correlation Matrix
-cor_matrix <- cor(cov_df_clean)
-print(round(cor_matrix, 2))
-
-```
-
-### Multi-covariate effects
-
-```{r}
-elev <- na.omit(DATA$Elevation)
-cover <- na.omit(DATA$Forest)
-dist_water <- na.omit(DATA$Dist_Water)
-hfi <- na.omit(DATA$HFI)
-
-# Problem:  Values of the covariate ‘hfi’ were NA or undefined at 0.32% (32 out of 9920) of the quadrature points 
-#when fitting spatial point process models with ppm() in spatstat, missing covariate values at quadrature points will cause errors
- 
-model_all_linear <- ppm(bears_ppp, ~ elev + cover + dist_water + hfi, 
-               covariates = list(elev = elev, cover = cover, hfi = hfi, dist_water = dist_water))
-
-print(summary(model_all_linear))
-```
-
-```{r}
-# im object to RasterLayer
-im2raster <- function(im_obj) {
-  # iamge to matrix
-  m <- as.matrix(im_obj)
-  # create raster object
-  r <- raster(m)
-  # range and extension
-  ext <- c(im_obj$xrange[1] - im_obj$xstep/2,
-           im_obj$xrange[2] + im_obj$xstep/2,
-           im_obj$yrange[1] - im_obj$ystep/2,
-           im_obj$yrange[2] + im_obj$ystep/2)
-  extent(r) <- ext
-  return(r)
-}
-
-# hfi to RasterLayer
-hfi_raster <- im2raster(hfi)
-
-hfi_matrix <- as.matrix(hfi)
-media_hfi <- mean(as.vector(hfi_matrix), na.rm = TRUE)
-cat("Mean HFI (without NA):", media_hfi, "\n")
-
-# Impute NA values in HFI using the mean
-hfi_clean <- eval.im( ifelse(is.na(hfi), media_hfi, hfi) )
-
-summary(as.vector(as.matrix(hfi_clean)))
-
-# elevation to RasterLayer
-elev_raster <- im2raster(elev)
-
-elev_matrix <- as.matrix(elev)
-media_elev <- mean(as.vector(elev_matrix), na.rm = TRUE)
-cat("Mean Elevation (without NA):", media_elev, "\n")
-
-# Impute NA values in Elevation using the mean
-elev_clean <- eval.im( ifelse(is.na(elev), media_elev, elev) )
-
-summary(as.vector(as.matrix(elev_clean)))
-```
-
-```{r}
-# Fit model using the image
-model_all_linear <- ppm(bears_ppp, ~ elev + cover + dist_water + hfi,
-                        covariates = list(elev = elev,
-                                          cover = cover,
-                                          dist_water = dist_water,
-                                          hfi = hfi_clean))
-
-print(summary(model_all_linear))
-```
-
-```{r}
-model_all_quad <- ppm(bears_ppp, ~ elev + I(elev^2) + cover + I(cover^2)
-                      + dist_water + I(dist_water^2) + hfi + I(hfi^2), 
-                      covariates = list(elev = elev,
-                                        cover = cover,
-                                        dist_water = dist_water,
-                                        hfi = hfi_clean))
-
-summary(model_all_quad)
-```
-
-```{r}
-# for forest cover the quadatric model was best
-# quadratic for elevation
-# dist_water - linear was best
-# hfi - linear was best
-
-model_all_agg <- ppm(bears_ppp, ~ elev + I(elev^2) + cover + I(cover^2)
-                      + dist_water + hfi, 
-                      covariates = list(elev = elev,
-                                        cover = cover,
-                                        dist_water = dist_water,
-                                        hfi = hfi_clean))
-
-summary(model_all_agg)
-```
-
-#### Model evaluation
-
-```{r}
-# Compare models using AIC
-
-# Null model
-AIC(mod_distw_clean_null)
-
-# All 4 covariates Linear model
-AIC(model_all_linear)
-
-# All 4 covariates Quadratic model
-AIC(model_all_quad)
-
-# All 4 covariates Quadratic model
-AIC(model_all_agg)
-
-```
-
-```{r}
-options(scipen = 0)
-# Likelihood Ratio Test 
-anova(mod_distw_clean_null, model_all_linear,  test = "LRT")
-
-# Likelihood Ratio Test 
-anova(mod_distw_clean_null, model_all_quad,  test = "LRT")
-
-# Likelihood Ratio Test 
-anova(mod_distw_clean_null, model_all_agg,  test = "LRT")
-```
-
-```{r}
-# Plot the log intensity using default plot method, by setting log = TRUE
-plot(model_all_linear, se = FALSE, log = TRUE, n = 200,box = F, main = "Log-Intensity Prediction")
-
-#Overlay the park locations
-plot(bears_ppp,
-     pch = 16,
-     cex = 0.8,
-     cols = "black",
-     add = TRUE)
-plot(bears_ppp,
-     pch = 16,
-     cex = 0.5,
-     cols = "white",
-     add = TRUE)
-
-```
-
-```{r}
-#Run the quadrat test
-quadrat.test(model_all_linear, nx = 4, ny = 2)
-
-quadrat.test(model_all_quad, nx = 4, ny = 2)
-
-quadrat.test(model_all_agg, nx = 4, ny = 2)
-```
-
-```{r}
-#Calculate the partial residuals as a function of elevation
-par_res_elev <- parres(model_all_linear, "elev")
-
-#Calculate the relative intensity as a function of forest cover
-par_res_forest <- parres(model_all_linear, "cover")
-
-#Calculate the partial residuals as a function of elevation
-par_res_distw <- parres(model_all_linear, "dist_water")
-
-#Calculate the relative intensity as a function of forest cover
-par_res_hfi <- parres(model_all_linear, "hfi")
-
-#Side by side plotting
-par(mfrow = c(2,2))
-par(mar = c(4, 4, 2, 2))
-plot(par_res_elev,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for elevation",
-     xlab = "Elevation (m)")
-plot(par_res_forest,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for forest cover",
-     xlab = "Forest cover (%)")
-plot(par_res_distw,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for distance to water",
-     xlab = "Elevation (m)")
-plot(par_res_hfi,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for HFI",
-     xlab = "Forest cover (%)")
-```
-
-```{r}
-#Calculate the partial residuals as a function of elevation
-par_res_elev <- parres(model_all_agg, "elev")
-
-#Calculate the relative intensity as a function of forest cover
-par_res_forest <- parres(model_all_agg, "cover")
-
-#Calculate the partial residuals as a function of elevation
-par_res_distw <- parres(model_all_agg, "dist_water")
-
-#Calculate the relative intensity as a function of forest cover
-par_res_hfi <- parres(model_all_agg, "hfi")
-
-#Side by side plotting
-par(mfrow = c(2,2))
-par(mar = c(4, 4, 2, 2))
-plot(par_res_elev,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for elevation",
-     xlab = "Elevation (m)")
-plot(par_res_forest,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for forest cover",
-     xlab = "Forest cover (%)")
-plot(par_res_distw,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for distance to water",
-     xlab = "Elevation (m)")
-plot(par_res_hfi,
-     legend = FALSE,
-     lwd = 2,
-     main = "Partial residual for HFI",
-     xlab = "Forest cover (%)")
-```
-
-### Seasonal Multi-covariate effects ??
-
-```{r}
-options(scipen = 999) # remove scientific notation
-
-# model for each season (individually)
-models_seasonal_overall <- list()
-
-for (season in names(ppp_list)) {
-  models_seasonal_overall[[season]] <- ppm(ppp_list[[season]], ~ elev + I(elev^2) + 
-                                             cover + I(cover^2) + 
-                                             dist_water + hfi, 
-                                        covariates = list(elev = elev_clean,
-                                        cover = cover,
-                                        dist_water = dist_water,
-                                        hfi = hfi_clean))
-
-  cat("Model for", season, ":\n")
-  print(models_seasonal_overall[[season]])
-}
-```
-
-**Interpretation**
-
--   Winter: Model did not converge, potentially due to collinearity or sparse points. Most variables significant, but I(cover\^2) and dist_water are not.
-
--   Spring/Summer/Autumn: Models converged well. All have a strong positive effect from hfi, and a curvilinear response to elevation and cover.
-
-#### Model Evaluation
